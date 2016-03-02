@@ -13,8 +13,8 @@ class FullyConnectedLayer(WeightedLayer):
     def __init__(self, n_out, n_in=None):
         """Create fully connected layer.
 
-        n_out: Number of output neurons.
-        n_in: Number of input neurons.
+        :n_out: Number of output neurons.
+        :n_in: Number of input neurons.
         """
         super(FullyConnectedLayer, self).__init__()
         self._n_in = None
@@ -25,12 +25,11 @@ class FullyConnectedLayer(WeightedLayer):
 
     @property
     def n_in(self):
-        """Return number of input neurons."""
+        """Number of input neurons."""
         return self._n_in
 
     @n_in.setter
     def n_in(self, value):
-        """Set number of input neurons."""
         if not value or self._n_in == value:
             return
 
@@ -61,26 +60,17 @@ class FullyConnectedLayer(WeightedLayer):
 
     @property
     def output_shape(self):
-        """Return output shape."""
         return self.n_out
 
     def _reshape_input(self, raw_layer_input):
-        """Return input in the format that is suitable for this layer.
+        """Return input in the correct format for fully connected layer.
 
-        raw_layer_input: Input in the format (n_in, n_out) or compatible.
+        :raw_layer_input: Input in the format (n_in, n_out) or compatible.
         """
         return raw_layer_input.flatten(2)
 
     def _get_output(self, layer_input):
-        """Return layer's output.
-
-        layer_input: Layer input.
-        """
         return T.dot(self.input, self.W_shared) + self.b_shared
 
     def get_output_shape(self, input_shape):
-        """Return output shape.
-
-        input_shape: Input shape.
-        """
         return input_shape

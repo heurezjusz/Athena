@@ -47,25 +47,23 @@ class Network(object):
         self.convolutional_layers = [layer for layer in self.weighted_layers
                                      if isinstance(layer, ConvolutionalLayer)]
 
-        # batch_size: Minibatch size
         self.batch_size = 1
-        # data_loader: instance of class athenet.utils.DataLoader
-        self.data_loader = None
 
     @property
     def data_loader(self):
+        """Instance of class athenet.utils.DataLoader."""
         return self._data_loader
 
     @data_loader.setter
     def data_loader(self, value):
-        if not value:
-            return
         self._data_loader = value
-        self.data_loader.batch_size = self.batch_size
+        if value:
+            self.data_loader.batch_size = self.batch_size
         self._update()
 
     @property
     def batch_size(self):
+        """Minibatch size."""
         return self._batch_size
 
     @batch_size.setter
@@ -119,7 +117,7 @@ class Network(object):
                 accuracy = accuracy_fun(batch_index, top)
                 batch_accuracies += [accuracy]
                 if self.verbosity >= 2 or\
-                    (self.verbosity >= 1 and batch_index % interval == 0):
+                        (self.verbosity >= 1 and batch_index % interval == 0):
                     print 'Minibatch {} top-{} accuracy: {:.1f}%'.format(
                         batch_index, top, 100*accuracy)
             accuracies += [np.mean(batch_accuracies)]
@@ -131,11 +129,12 @@ class Network(object):
     def test_accuracy(self, top_range=1):
         """Return network's accuracy on the test data.
 
-        top_range: Number or list represinting top ranges to be used.
-                   Network's answer is considered correct if correct answer is
-                   among top_range most probable answers given by network.
-        return: Number or list representing network accuracy for given top
-                ranges.
+        :top_range: Number or list represinting top ranges to be used.
+                    Network's answer is considered correct if correct answer
+                    is among top_range most probable answers given by the
+                    network.
+        :return: Number or list representing network accuracy for given top
+                 ranges.
         """
         return self._get_accuracy(top_range,
                                   self._test_data_accuracy,
@@ -145,11 +144,12 @@ class Network(object):
     def val_accuracy(self, top_range=1):
         """Return network's accuracy on the validation data.
 
-        top_range: Number or list represinting top ranges to be used.
-                   Network's answer is considered correct if correct answer is
-                   among top_range most probable answers given by network.
-        return: Number or list representing network accuracy for given top
-                ranges.
+        :top_range: Number or list represinting top ranges to be used.
+                    Network's answer is considered correct if correct answer
+                    is among top_range most probable answers given by the
+                    network.
+        :return: Number or list representing network accuracy for given top
+                 ranges.
         """
         return self._get_accuracy(top_range,
                                   self._val_data_accuracy,
@@ -157,9 +157,9 @@ class Network(object):
                                   self.data_loader.n_val_batches)
 
     def get_params(self):
-        """Return network's weights and biases.
+        """Return list of network's weights and biases.
 
-        return: List of tuples (W, b)
+        :return: List of pairs (W, b).
         """
         params = []
         for layer in self.weighted_layers:
@@ -169,7 +169,7 @@ class Network(object):
     def set_params(self, params):
         """Set network's weights and biases.
 
-        params: List of tuples (W, b)
+        :params: List of pairs (W, b).
         """
         for p, layer in zip(params, self.weighted_layers):
             layer.W = p[0]
@@ -178,10 +178,13 @@ class Network(object):
     def evaluate(self, net_input):
         """Return network output for a given input.
 
-        Batch size should be set to 1 before using this method. If it isn't,
-        it will be set to 1.
+        Batch size must be equal 1 to use this method. If it isn't, it will be
+        set to 1.
 
-        net_input: Input for the network
+        :net_input: Input for the network.
+        :return: A pair consisting of list of probabilities for every answer
+                 index and list of answer indexes sorted by their
+                 probabilities descending.
         """
         self.batch_size = 1
         net_input = np.asarray(net_input, dtype=theano.config.floatX)
@@ -192,10 +195,10 @@ class Network(object):
     def train(self, learning_rate=0.1, n_epochs=100, batch_size=None):
         """Train and test the network.
 
-        learning_rate: Learning rate.
-        n_epochs: Number of epochs.
-        batch_size: Size of minibatch to be set. If None then batch size that
-                    is currenty set will be used.
+        :learning_rate: Learning rate.
+        :n_epochs: Number of epochs.
+        :batch_size: Size of minibatch to be set. If None then batch size that
+                     is currenty set will be used.
         """
         if not self.data_loader:
             raise Exception('Data loader is not set')
@@ -259,7 +262,8 @@ class Network(object):
                 100*self.test_accuracy())
 
     def _update(self):
-        """Update fields that depend on both batch size and data loader."""
+        self._val_data_accuracy = None
+        self._test_data_accuracy = None
         if not self.data_loader:
             return
 
@@ -274,8 +278,6 @@ class Network(object):
                         self.data_loader.val_output(self._batch_index)
                 }
             )
-        else:
-            self._val_data_accuracy = None
 
         if self.data_loader.test_data_available:
             self._test_data_accuracy = theano.function(
@@ -288,5 +290,3 @@ class Network(object):
                         self.data_loader.test_output(self._batch_index)
                 }
             )
-        else:
-            self._test_data_accuracy = None

@@ -10,8 +10,8 @@ class MaxPool(Layer):
     def __init__(self, poolsize, stride=None):
         """Create max-pooling layer.
 
-        poolsize: Pooling factor in the format (height, width).
-        stride: Interval at which to apply the filters.
+        :poolsize: Pooling factor in the format (height, width).
+        :stride: Pair representing interval at which to apply the filters.
         """
         super(MaxPool, self).__init__()
         self.poolsize = poolsize
@@ -19,7 +19,6 @@ class MaxPool(Layer):
 
     @property
     def output_shape(self):
-        """Return output shape."""
         image_h, image_w, n_channels = self.input_shape
         pool_h, pool_w = self.poolsize
         if self.stride:
@@ -36,6 +35,7 @@ class MaxPool(Layer):
 
         layer_input: Input in the format (batch size, number of channels,
                                           image height, image width).
+        :return: Layer output.
         """
         return downsample.max_pool_2d(
             input=layer_input,

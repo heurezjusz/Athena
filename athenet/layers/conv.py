@@ -15,17 +15,17 @@ class ConvolutionalLayer(WeightedLayer):
                  padding=(0, 0), n_groups=1, batch_size=1):
         """Create convolutional layer.
 
-        filter_shape: Filter shape in the format
-                      (filter height, filter width, number of filters).
-        image_shape: Image shape in the format
-                     (image height, image width, number of channels).
-        stride: Tuple representing interval at which to apply the filters.
-        padding: Tuple representing number of zero-valued pixels to add on
-                 each side of the input.
-        n_groups: Number of groups which input and output channels will be
-                  split into. Two channels are connected only if they belong
-                  to the same group.
-        batch_size: Minibatch size.
+        :filter_shape: Filter shape in the format
+                       (filter height, filter width, number of filters).
+        :image_shape: Image shape in the format
+                      (image height, image width, number of channels).
+        :stride: Pair representing interval at which to apply the filters.
+        :padding: Pair representing number of zero-valued pixels to add on
+                  each side of the input.
+        :n_groups: Number of groups which input and output channels will be
+                   split into. Two channels are connected only if they belong
+                   to the same group.
+        :batch_size: Minibatch size.
         """
         super(ConvolutionalLayer, self).__init__()
         self._image_shape = None
@@ -40,12 +40,10 @@ class ConvolutionalLayer(WeightedLayer):
 
     @property
     def image_shape(self):
-        """Return image shape."""
         return self._image_shape
 
     @image_shape.setter
     def image_shape(self, value):
-        """Set image shape."""
         if not value or self._image_shape == value:
             return
         self._image_shape = value
@@ -80,7 +78,6 @@ class ConvolutionalLayer(WeightedLayer):
 
     @property
     def output_shape(self):
-        """Return output shape."""
         image_h, image_w, n_channels = self.image_shape
         pad_h, pad_w = self.padding
         image_h += 2 * pad_h
@@ -95,9 +92,9 @@ class ConvolutionalLayer(WeightedLayer):
     def _reshape_input(self, raw_layer_input):
         """Return input in the correct format for convolutional layer.
 
-        raw_layer_input: Input in the format (batch size, number of channels,
-                                              image height, image width) or
-                         compatible.
+        :raw_layer_input: Input in the format (batch size, number of channels,
+                                               image height, image width) or
+                          compatible.
         """
         h, w, n_channels = self.image_shape
         conv_image_shape = (self.batch_size, n_channels, h, w)
@@ -115,10 +112,6 @@ class ConvolutionalLayer(WeightedLayer):
         return extra_pixels
 
     def _get_output(self, layer_input):
-        """Return layer's output.
-
-        layer_input: Layer input.
-        """
         n_channels = self.image_shape[2]
         n_filters = self.filter_shape[2]
 

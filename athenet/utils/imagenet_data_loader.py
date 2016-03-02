@@ -16,6 +16,7 @@ class ImageNetDataLoader(DataLoader):
 
     name_prefix = 'ILSVRC'
     name_infix = '_img_'
+    mean_suffix = '_mean.jpg'
     verbosity = 0
 
     def __init__(self, year, val_size=None, val_buffer_size=1):
@@ -23,11 +24,11 @@ class ImageNetDataLoader(DataLoader):
 
         Only validation data are currently supported.
 
-        year: Specifies which year's data should be loaded.
-        val_size: Maximal size of validation data. If None, then all
-                  validation data will be used. If not None, then val_size
-                  images will be chosen randomly from the whole set.
-        val_buffer_size: Number of batches to be stored in memory.
+        :year: Specifies which year's data should be loaded.
+        :val_size: Maximal size of validation data. If None, then all
+                   validation data will be used. If not None, then val_size
+                   images will be chosen randomly from the whole set.
+        :val_buffer_size: Number of batches to be stored in memory.
         """
         super(ImageNetDataLoader, self).__init__()
         self._val_low = None
@@ -39,6 +40,12 @@ class ImageNetDataLoader(DataLoader):
         self.val_name = base_name + 'val'
         self.val_dir_name = self.val_name + '/'
         self.val_buffer_size = val_buffer_size
+
+        mean_path = get_bin_path(self.val_name + self.mean_suffix)
+        if os.path.isfile(mean_path):
+            self.mean = self._get_img(mean_path)
+        else:
+            self.mean = 0.
 
         files = os.listdir(get_bin_path(self.val_dir_name))
         answers = OrderedDict()
@@ -73,7 +80,9 @@ class ImageNetDataLoader(DataLoader):
     def _get_img(self, filename):
         img = misc.imread(get_bin_path(filename))
         img = np.rollaxis(img, 2)
-        return img.reshape((1, 3, 227, 227))
+        img = img[::-1, :, :]
+        img = img.reshape((1, 3, 227, 227))
+        return np.asarray(img, dtype=float)
 
     def load_val_data(self, batch_index):
         if (batch_index >= self._val_low) and (batch_index < self._val_high):
@@ -85,7 +94,8 @@ class ImageNetDataLoader(DataLoader):
                                  self.val_buffer_size)
         imgs = []
         for filename in files:
-            imgs += [self._get_img(self.val_dir_name + filename)]
+            img = self._get_img(self.val_dir_name + filename)
+            imgs += [img - self.mean]
 
         imgs = np.concatenate(imgs, axis=0)
         self.val_in.set_value(
