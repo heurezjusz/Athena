@@ -10,11 +10,11 @@ class LRN(Layer):
     def __init__(self, local_range=5, k=1, alpha=0.0002, beta=0.75):
         """Create Local Response Normalization layer.
 
-        local_range: Local channel range. Should be odd,
-                     otherwise it will be incremented.
-        k: Additive constant
-        alpha: The scaling parameter
-        beta: The exponent
+        :local_range: Local channel range. Should be odd,
+                      otherwise it will be incremented.
+        :k: Additive constant.
+        :alpha: The scaling parameter.
+        :beta: The exponent.
         """
         super(LRN, self).__init__()
         if local_range % 2 == 0:
@@ -29,6 +29,7 @@ class LRN(Layer):
 
         layer_input: Input in the format (batch size, number of channels,
                                           image height, image width).
+        :return: Layer output.
         """
         half = self.local_range / 2
         sq = T.sqr(layer_input)

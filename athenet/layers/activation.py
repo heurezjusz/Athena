@@ -10,23 +10,19 @@ class Activation(Layer):
     def __init__(self, activation_function):
         """Create activation layer.
 
-        activation_function: Activation function to be applied
+        :activation_function: Activation function to be applied.
         """
         super(Activation, self).__init__()
         self.activation_function = activation_function
 
     def _get_output(self, layer_input):
-        """Return layer's output.
-
-        layer_input: Layer input.
-        """
         return self.activation_function(layer_input)
 
 
 def relu(x):
     """Rectified linear activation function.
 
-    x: Neuron input
+    :x: Neuron input.
     """
     return T.maximum(0., x)
 
