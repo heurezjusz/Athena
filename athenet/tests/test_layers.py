@@ -1,34 +1,12 @@
-""" Tests """
+""" Tests for all layers """
 
 import theano
 import theano.tensor as T
 import numpy as np
 from unittest import TestCase, main
 
-from athenet import Network
 from athenet.layers import ConvolutionalLayer, Softmax, FullyConnectedLayer, \
-        ReLU, Activation, LRN, MaxPool, Dropout
-
-class TestNetworkBasics(TestCase):
-    def test_layers_lists(self):
-        def foo(x):
-            return T.minimum(x, 0.)
-
-        net = Network([
-            ConvolutionalLayer(image_shape=(42, 21, 2),
-                               filter_shape=(5, 5, 3)),
-            ReLU(),
-            ConvolutionalLayer(filter_shape=(5, 5, 3)),
-            Activation(foo),
-            FullyConnectedLayer(10),
-            ReLU(),
-            Softmax(),
-            FullyConnectedLayer(3),
-        ])
-
-        self.assertEqual(len(net.convolutional_layers), 2)
-        self.assertEqual(len(net.weighted_layers), 4)
-        self.assertEqual(len(net.layers), 8)
+    ReLU, Activation, LRN, MaxPool, Dropout
 
 
 def eval_tensor_on_layer(layer, tensor):

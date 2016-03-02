@@ -5,7 +5,8 @@ import numpy as np
 import theano
 import theano.tensor as T
 
-from athenet.utils import DataLoader, load_data, get_bin_path
+from athenet.utils import load_data, get_bin_path
+from athenet.data_loader import DataLoader
 
 
 class MNISTDataLoader(DataLoader):
@@ -18,8 +19,8 @@ class MNISTDataLoader(DataLoader):
     def __init__(self, filename=MNIST_filename, url=MNIST_origin):
         """Create MNIST data loader.
 
-        filename: Name of a file with MNIST data.
-        url: Url for downloading MNIST data.
+        :filename: Name of a file with MNIST data.
+        :url: Url for downloading MNIST data.
         """
         super(MNISTDataLoader, self).__init__()
 
@@ -40,8 +41,8 @@ class MNISTDataLoader(DataLoader):
     def _mnist_shared_dataset(self, data):
         """Create shared variables from given data.
 
-        data: Data consisting of pairs (input, output).
-        return: Theano shared variables created from data.
+        :data: Data consisting of pairs (input, output).
+        :return: Shared variables created from data.
         """
         data_in, data_out = data
         data_in = np.resize(data_in, (data_in.shape[0], 1, 28, 28))
