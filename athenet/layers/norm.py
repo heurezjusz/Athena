@@ -28,8 +28,8 @@ class LRN(Layer):
     def _get_output(self, layer_input):
         """Return layer's output.
 
-        layer_input: Input in the format (batch size, number of channels,
-                                          image height, image width).
+        :layer_input: Input in the format (batch size, number of channels,
+                                           image height, image width).
         :return: Layer output.
         """
         half = self.local_range / 2
