@@ -381,7 +381,7 @@ class Interval(Numlike):
                    upper_val=None):
         """Returns Interval of shape shp with given lower and upper values.
 
-        :param tuple of integers or integer shp : shape of created Interval
+        :param tuple of integers shp : shape of created Interval
         :param Boolean neutral: if True sets (lower_val, upper_val) to
                                 NEUTRAL_INTERVAL_VALUES, otherwise to
                                 DEFAULT_INTERVAL_VALUES, works only if pair is
@@ -399,12 +399,8 @@ class Interval(Numlike):
         if upper_val is None:
             upper_val = NEUTRAL_INTERVAL_UPPER if neutral else \
                         DEFAULT_INTERVAL_UPPER
-        lower_array = numpy.ndarray(shp, dtype=theano.config.floatX)
-        upper_array = numpy.ndarray(shp, dtype=theano.config.floatX)
-        lower_array.fill(lower_val)
-        upper_array.fill(upper_val)
-        lower = shared(lower_array)
-        upper = shared(upper_array)
+        lower = T.alloc(lower_val, *shp)
+        upper = T.alloc(upper_val, *shp)
         return Interval(lower, upper)
 
     def reshape_for_padding(self, shape, padding, lower_val=None,
@@ -488,12 +484,12 @@ class Interval(Numlike):
                       * _upp endings are for softmax with variables shifted so
                         that input[i].lower() == 0
         """
-        result = Interval.from_shape(input_shp, neutral=True)
+        result = Interval.from_shape((input_shp,), neutral=True)
         for i in xrange(input_shp):
             input_low = (self - self.upper[i]).exp()
             input_upp = (self - self.lower[i]).exp()
-            sum_low = Interval.from_shape(1, neutral=True)
-            sum_upp = Interval.from_shape(1, neutral=True)
+            sum_low = Interval.from_shape((1,), neutral=True)
+            sum_upp = Interval.from_shape((1,), neutral=True)
             for j in xrange(input_shp):
                 if j != i:
                     sum_low = sum_low + input_low[j]
@@ -641,6 +637,344 @@ class Interval(Numlike):
         conv_result_upper_3d = conv_result_upper.reshape((n_in, h, w))
         result_interval = Interval(conv_result_lower_3d, conv_result_upper_3d)
         return result_interval + biases.dimshuffle(0, 'x', 'x')
+
+    def op_d_relu(self, activation):
+        """Returns estimated impact of input of relu layer on output of
+        network.
+
+        :param Interval activation: activation of relu layer
+        :returns: Impact of input of relu on output of network
+        :rtype: Interval
+        """
+        out_lower = self.lower
+        out_upper = self.upper
+        act_low = activation.lower
+        act_upp = activation.upper
+        low_gt_zero = T.gt(act_low, 0.0)
+        upp_lt_zero = T.lt(act_upp, 0.0)
+        lower = T.switch(low_gt_zero, out_lower,
+                         T.switch(upp_lt_zero, 0.0, T.minimum(out_lower, 0.0)))
+        upper = T.switch(low_gt_zero, out_upper,
+                         T.switch(upp_lt_zero, 0.0, T.maximum(out_upper, 0.0)))
+        return Interval(lower, upper)
+
+    def op_d_max_pool(self, activation, input_shape, poolsize, stride,
+                      padding):
+        """Returns estimated impact of input of max pool layer on output of
+        network.
+
+        :param Interval self: estimated impact of output of layer on output
+                               of network in shape (batch_size, number of
+                               channels, height, width)
+        :param Interval activation: estimated activation of input
+        :param input_shape: shape of layer input in format (batch size,
+                            number of channels, height, width)
+        :type input_shape: tuple of 4 integers
+        :param pair of integers poolsize: pool size in format (height, width),
+                                          not equal (1, 1)
+        :param pair of integers stride: stride of max pool
+        :param pair of integers padding: padding of max pool
+        :returns: Estimated impact of input on output of network
+        :rtype: Interval
+        """
+        n_batches, n_in, h, w = input_shape
+        pad_h, pad_w = padding
+        activation = activation.reshape_for_padding(input_shape, padding,
+                                                    lower_val=-numpy.inf,
+                                                    upper_val=-numpy.inf)
+        input_shape = (n_batches, n_in, h + 2 * pad_h, w + 2 * pad_w)
+        h += 2 * pad_h
+        w += 2 * pad_w
+        # n_batches, n_in, h, w - number of batches, number of channels,
+        #                         image height, image width
+        # fh, fw - pool height, pool width
+        fh, fw = poolsize
+        stride_h, stride_w = stride
+        output = self
+        result = activation.from_shape(input_shape, neutral=True)
+        for at_h in xrange(0, h - fh + 1, stride_h):
+            # at_out_h - height of output corresponding to pool at position at
+            # h
+            at_out_h = at_h / stride_h
+            for at_w in xrange(0, w - fw + 1, stride_w):
+                # at_out_w - height of output corresponding to pool at
+                # position at_w
+                at_out_w = at_w / stride_w
+                # any input on any filter frame
+                for at_f_h in xrange(at_h, at_h + fh):
+                    for at_f_w in xrange(at_w, at_w + fw):
+                        # maximum lower and upper of neighbours
+                        neigh_max_low = shared(-numpy.inf)
+                        neigh_max_upp = shared(-numpy.inf)
+                        neigh_max_itv = Interval(neigh_max_low, neigh_max_upp)
+                        act_slice = activation[:, :, at_f_h, at_f_w]
+                        # setting maximum lower and upper of neighbours
+                        for at_f_h_neigh in xrange(at_h, at_h + fh):
+                            for at_f_w_neigh in xrange(at_w, at_w + fw):
+                                if (at_f_h_neigh, at_f_w_neigh) != (
+                                        at_f_h, at_f_w):
+                                    neigh_slice = activation[:, :,
+                                                             at_f_h_neigh,
+                                                             at_f_w_neigh]
+                                    neigh_max_itv = \
+                                        neigh_max_itv.max(neigh_slice)
+                        # must have impact on output
+                        low_gt_neigh_max_upp = \
+                            T.gt(act_slice.lower, neigh_max_itv.upper)
+                        # cannot have impact on output
+                        upp_gt_neigh_max_low = \
+                            T.gt(act_slice.upper, neigh_max_itv.lower)
+                        # might have impact on output
+                        output_slice = output[:, :, at_out_h, at_out_w]
+                        mixed_low = T.minimum(output_slice.lower, 0.0)
+                        mixed_upp = T.maximum(output_slice.upper, 0.0)
+                        to_add_low = T.switch(
+                            low_gt_neigh_max_upp,
+                            output_slice.lower,
+                            T.switch(
+                                upp_gt_neigh_max_low,
+                                mixed_low,
+                                T.zeros_like(mixed_low)
+                            )
+                        )
+                        to_add_upp = T.switch(
+                            low_gt_neigh_max_upp,
+                            output_slice.upper,
+                            T.switch(
+                                upp_gt_neigh_max_low,
+                                mixed_upp,
+                                T.zeros_like(mixed_upp)
+                            )
+                        )
+                        itv_to_add = Interval(to_add_low, to_add_upp)
+                        result[:, :, at_f_h, at_f_w] = \
+                            result[:, :, at_f_h, at_f_w] + itv_to_add
+
+        return result[:, :, pad_h:h - pad_h, pad_w:w - pad_w]
+
+    def op_d_avg_pool(self, activation, input_shape, poolsize, stride,
+                      padding):
+        """Returns estimated impact of input of avg pool layer on output of
+        network.
+
+        :param Interval self: estimated impact of output of layer on output
+                               of network in shape (batch_size, number of
+                               channels, height, width)
+        :param Interval activation: estimated activation of input
+        :param input_shape: shape of layer input in format (batch size,
+                            number of channels, height, width)
+        :type input_shape: tuple of 4 integers
+        :param pair of integers poolsize: pool size in format (height, width)
+        :param pair of integers stride: stride of max pool
+        :param pair of integers padding: padding of avg pool
+        :returns: Estimated impact of input on output of network
+        :rtype: Interval
+        """
+        n_batches, n_in, h, w = input_shape
+        pad_h, pad_w = padding
+        activation = activation.reshape_for_padding(input_shape, padding,
+                                                    lower_val=-numpy.inf,
+                                                    upper_val=-numpy.inf)
+        input_shape = (n_batches, n_in, h + 2 * pad_h, w + 2 * pad_w)
+        h += 2 * pad_h
+        w += 2 * pad_w
+        # n_batches, n_in, h, w - number of batches, number of channels,
+        #                         image height, image width
+        # fh, fw - pool height, pool width
+        fh, fw = poolsize
+        stride_h, stride_w = stride
+        output = self
+        result = activation.from_shape(input_shape, neutral=True)
+        for at_h in xrange(0, h - fh + 1, stride_h):
+            # at_out_h - height of output corresponding to pool at position at
+            # h
+            at_out_h = at_h / stride_h
+            for at_w in xrange(0, w - fw + 1, stride_w):
+                # at_out_w - height of output corresponding to pool at
+                # position at_w
+                at_out_w = at_w / stride_w
+                output_slice_low = output.lower[:, :, at_out_h, at_out_w]
+                output_slice_low = output_slice_low.dimshuffle(0, 1, 'x', 'x')
+                output_slice_low = T.addbroadcast(output_slice_low, 2, 3)
+                output_slice_upp = output.upper[:, :, at_out_h, at_out_w]
+                output_slice_upp = output_slice_upp.dimshuffle(0, 1, 'x', 'x')
+                output_slice_upp = T.addbroadcast(output_slice_upp, 2, 3)
+                result_slice = result[:, :, at_h:at_h + fh, at_w:at_w + fw]
+                new_slice_low = output_slice_low + result_slice.lower
+                new_slice_upp = output_slice_upp + result_slice.upper
+                new_slice = Interval(new_slice_low, new_slice_upp)
+                result[:, :, at_h:at_h + fh, at_w:at_w + fw] = new_slice
+        result = result * shared(1.0 / numpy.prod(poolsize))
+        return result[:, :, pad_h:h - pad_h, pad_w:w - pad_w]
+
+    def op_d_norm(self, activation, input_shape, local_range, k, alpha,
+                  beta):
+        # TODO: all
+        """Returns estimated impact of input of norm layer on output of
+        network.
+
+        :param Interval self: estimated impact of output of layer on output
+                               of network in shape (batch_size, number of
+                               channels, height, width)
+        :param Interval activation: estimated activation of input
+        :param input_shape: shape of layer input in format (batch size,
+                            number of channels, height, width)
+        :type input_shape: tuple of 4 integers
+        :param integer local_range: size of local range in local range
+                                    normalization
+        :param float k: local range normalization k argument
+        :param float alpha: local range normalization alpha argument
+        :param float beta: local range normalization beta argument
+        :rtype: Interval
+        """
+        pass
+
+    def op_d_conv(self, input_shape, filter_shape, weights,
+                  stride, padding, n_groups):
+        """Returns estimated impact of input of convolutional layer on output
+        of network.
+
+        :param Interval self: estimated impact of output of layer on output
+                              of network in shape (number of batches,
+                              number of channels, height, width)
+        :param input_shape: shape of layer input in format
+                            (number of batches,
+                             number of input channels,
+                             image height,
+                             image width)
+        :type input_shape: tuple of 4 integers
+        :param filter_shape: filter shape in the format
+                             (number of output channels, filter height,
+                              filter width)
+        :type filter_shape: tuple of 3 integers
+        :param weights: Weights tensor in format (number of output channels,
+                                                  number of input channels,
+                                                  filter height,
+                                                  filter width)
+        :type weights: theano.tensor4
+        :param stride: pair representing interval at which to apply the filters
+        :type stride: pair of integers
+        :param padding: pair representing number of zero-valued pixels to add
+                        on each side of the input.
+        :type padding: pair of integers
+        :param n_groups: number of groups input and output channels will be
+                         split into, two channels are connected only if they
+                         belong to the same group.
+        :type n_groups: integer
+        :returns: Estimated impact of input on output of network
+        :rtype: Interval
+        """
+        # n_in, h, w - number of input channels, image height, image width
+        n_batches, n_in, h, w = input_shape
+        # n_out, fh, fw - number of output channels, filter height, filter
+        # width
+        n_out, fh, fw = filter_shape
+        pad_h, pad_w = padding
+        output = self
+        if stride == (1, 1):
+            weights = weights[:, :, ::-1, ::-1]
+            rev_weights = weights.dimshuffle(1, 0, 2, 3)
+            rev_weights_neg = T.minimum(rev_weights, 0.0)
+            rev_weights_pos = T.maximum(rev_weights, 0.0)
+            rev_h = h + 2 * pad_h - fh + 1
+            rev_w = w + 2 * pad_w - fw + 1
+            rev_n_out = n_in
+            rev_image_shape = (rev_h, rev_w, n_out)
+            rev_filter_shape = (fh, fw, rev_n_out)
+            rev_pad_h = fh - 1 - pad_h
+            rev_pad_w = fw - 1 - pad_w
+            rev_padding = (rev_pad_h, rev_pad_w)
+            output_lower = \
+                misc_reshape_for_padding(output.lower, rev_image_shape,
+                                         n_batches, rev_padding)
+            output_upper = \
+                misc_reshape_for_padding(output.upper, rev_image_shape,
+                                         n_batches, rev_padding)
+            res_low_pos = convolution(output_lower, rev_weights_pos, stride,
+                                      n_groups, rev_image_shape,
+                                      rev_padding, n_batches, rev_filter_shape)
+            res_low_neg = convolution(output_lower, rev_weights_neg, stride,
+                                      n_groups, rev_image_shape,
+                                      rev_padding, n_batches, rev_filter_shape)
+            res_upp_pos = convolution(output_upper, rev_weights_pos, stride,
+                                      n_groups, rev_image_shape,
+                                      rev_padding, n_batches, rev_filter_shape)
+            res_upp_neg = convolution(output_upper, rev_weights_neg, stride,
+                                      n_groups, rev_image_shape,
+                                      rev_padding, n_batches, rev_filter_shape)
+            lower = res_low_pos + res_upp_neg
+            upper = res_upp_pos + res_low_neg
+            result = Interval(lower, upper)
+            return result
+        # g_in - number of input channels per group
+        g_in = n_in / n_groups
+        # g_out - number of output channels per group
+        g_out = n_out / n_groups
+        stride_h, stride_w = stride
+        h += 2 * pad_h
+        w += 2 * pad_w
+        padded_input_shape = (n_batches, n_in, h, w)
+        result = Interval.from_shape(padded_input_shape, neutral=True)
+        # see: flipping kernel
+        weights = weights[:, :, ::-1, ::-1]
+        weights_neg = T.minimum(weights, 0.0)
+        weights_pos = T.maximum(weights, 0.0)
+        for at_g in xrange(0, n_groups):
+            # beginning and end of at_g'th group of input channel in input
+            at_in_from = at_g * g_in
+            at_in_to = at_in_from + g_in
+            # beginning and end of at_g'th group of output channel in weights
+            at_out_from = at_g * g_out
+            at_out_to = at_out_from + g_out
+            for at_h in xrange(0, h - fh + 1, stride_h):
+                # at_out_h - height of output corresponding to filter at
+                # position at_h
+                at_out_h = at_h / stride_h
+                for at_w in xrange(0, w - fw + 1, stride_w):
+                    # at_out_w - height of output corresponding to filter at
+                    # position at_w
+                    at_out_w = at_w / stride_w
+                    # weights slice that impacts on (at_out_h, at_out_w) in
+                    # output
+                    weights_pos_slice = \
+                        weights_pos[at_out_from:at_out_to, :, :, :]
+                    weights_pos_slice = \
+                        weights_pos_slice.dimshuffle('x', 0, 1, 2, 3)
+                    weights_pos_slice = T.addbroadcast(weights_pos_slice, 0)
+                    weights_neg_slice = \
+                        weights_neg[at_out_from:at_out_to, :, :, :]
+                    weights_neg_slice = \
+                        weights_neg_slice.dimshuffle('x', 0, 1, 2, 3)
+                    weights_neg_slice = T.addbroadcast(weights_neg_slice, 0)
+                    # shape of weights_slice: (n_batches, n_out, n_in, h, w)
+                    out_slice_low = output.lower[:, at_out_from:at_out_to,
+                                                 at_out_h, at_out_w]
+                    out_slice_low = out_slice_low.dimshuffle(0, 1, 'x', 'x',
+                                                             'x')
+                    out_slice_low = T.addbroadcast(out_slice_low, 2, 3, 4)
+                    out_slice_upp = output.upper[:, at_out_from:at_out_to,
+                                                 at_out_h, at_out_w]
+                    out_slice_upp = out_slice_upp.dimshuffle(0, 1, 'x', 'x',
+                                                             'x')
+                    out_slice_upp = T.addbroadcast(out_slice_upp, 2, 3, 4)
+                    res_low_pos = \
+                        (out_slice_low * weights_pos_slice).sum(axis=1)
+                    res_low_neg = \
+                        (out_slice_low * weights_neg_slice).sum(axis=1)
+                    res_upp_pos = \
+                        (out_slice_upp * weights_pos_slice).sum(axis=1)
+                    res_upp_neg = \
+                        (out_slice_upp * weights_neg_slice).sum(axis=1)
+                    res_slice_lower = res_low_pos + res_upp_neg
+                    res_slice_upper = res_upp_pos + res_low_neg
+                    res_slice = Interval(res_slice_lower, res_slice_upper)
+                    # input slice that impacts on (at_out_h, at_out_w) in
+                    # output
+                    result[:, at_in_from:at_in_to, at_h:(at_h + fh),
+                           at_w:(at_w + fw)] += res_slice
+        # remove padding
+        result = result[:, :, pad_h:(h - pad_h), pad_w:(w - pad_w)]
+        return result
 
     @staticmethod
     def derest_output(n_outputs):

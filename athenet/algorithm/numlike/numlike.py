@@ -280,6 +280,117 @@ class Numlike(object):
         """
         raise NotImplementedError
 
+    def op_d_relu(self, activation):
+        """Returns estimated impact of input of relu layer on output of
+        network.
+
+        :param Numlike activation: estimated activation of input
+        :param Numlike self: estimated impact of output of layer on output
+                               of network in shape (batch_size, number of
+                               channels, height, width)
+        :returns: Estimated impact of input on output of network
+        :rtype: Numlike
+        """
+        raise NotImplementedError
+
+    def op_d_max_pool(self, activation, input_shape, poolsize, stride,
+                      padding):
+        """Returns estimated impact of max pool layer on output of network.
+
+        :param Numlike self: estimated impact of output of layer on output
+                               of network in shape (batch_size, number of
+                               channels, height, width)
+        :param Numlike activation: estimated activation of input
+        :param input_shape: shape of layer input in format (batch size,
+                            number of channels, height, width)
+        :type input_shape: tuple of 4 integers
+        :param pair of integers poolsize: pool size in format (height, width),
+                                          not equal (1, 1)
+        :param pair of integers stride: stride of max pool
+        :param pair of integers padding: padding of max pool
+        :returns: Estimated impact of input on output of network
+        :rtype: Numlike
+        """
+        raise NotImplementedError
+
+    def op_d_avg_pool(self, activation, input_shape, poolsize, stride,
+                      padding):
+        """Returns estimated impact of avg pool layer on output of network.
+
+        :param Numlike self: estimated impact of output of layer on output
+                               of network in shape (batch_size, number of
+                               channels, height, width)
+        :param Numlike activation: estimated activation of input
+        :param input_shape: shape of layer input in format (batch size,
+                            number of channels, height, width)
+        :type input_shape: tuple of 4 integers
+        :param pair of integers poolsize: pool size in format (height, width),
+                                          not equal (1, 1)
+        :param pair of integers stride: stride of avg pool
+        :param pair of integers padding: padding of avg pool
+        :returns: Estimated impact of input on output of network
+        :rtype: Numlike
+        """
+        raise NotImplementedError
+
+    def op_d_norm(self, activation, input_shape, local_range, k, alpha,
+                  beta):
+        """Returns estimated impact of input of norm layer on output of
+        network.
+
+        :param Numlike self: estimated impact of output of layer on output
+                               of network in shape (batch_size, number of
+                               channels, height, width)
+        :param Numlike activation: estimated activation of input
+        :param input_shape: shape of layer input in format (batch size,
+                            number of channels, height, width)
+        :type input_shape: tuple of 4 integers
+        :param integer local_range: size of local range in local range
+                                    normalization
+        :param float k: local range normalization k argument
+        :param float alpha: local range normalization alpha argument
+        :param float beta: local range normalization beta argument
+        :rtype: Numlike
+        """
+        raise NotImplementedError
+
+    def op_d_conv(self, input_shape, filter_shape, weights,
+                  stride, padding, n_groups):
+        """Returns estimated impact of input of convolutional layer on output
+        of network.
+
+        :param Numlike output: estimated impact of output of layer on output
+                               of network in shape (batch_size,
+                               number of channels, height, width)
+        :param input_shape: shape of layer input in the format
+                            (number of batches,
+                             number of input channels,
+                             image height,
+                             image width)
+        :type input_shape: tuple of 4 integers
+        :param filter_shape: filter shape in the format
+                             (number of output channels, filter height,
+                              filter width)
+        :type filter_shape: tuple of 3 integers
+        :param weights: Weights tensor in format (number of output channels,
+                                                  number of input channels,
+                                                  filter height,
+                                                  filter width)
+        :type weights: numpy.ndarray or theano tensor
+        :param stride: pair representing interval at which to apply the filters
+        :type stride: pair of integers
+        :param padding: pair representing number of zero-valued pixels to add
+                        on each side of the input.
+        :type padding: pair of integers
+        :param n_groups: number of groups input and output channels will be
+                         split into, two channels are connected only if they
+                         belong to the same group.
+        :type n_groups: integer
+        :returns: Estimated impact of input on output of network
+        :rtype: Numlike
+        """
+        raise NotImplementedError
+
     @staticmethod
     def derest_output(n_outputs):
         """Generates Numlike of impact of output on output.

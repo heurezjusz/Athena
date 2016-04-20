@@ -264,8 +264,7 @@ class IntervalTest(unittest.TestCase):
         ans2l = [np.reciprocal(ans2u[1])] + [np.reciprocal(ans2u[0])] + ans2l
         ans2u = [np.reciprocal(ans2l[3])] + [np.reciprocal(ans2l[2])] + ans2u
         ans3l = [A([0.] * 9),
-                 A([-8., -8., -8., -1., -1., -1., -0.125, -0.125,
-                          -0.125])]
+                 A([-8., -8., -8., -1., -1., -1., -0.125, -0.125, -0.125])]
         ans3u = [A([4., 4., 4., 1., 1., 4., 0.25, 1., 4.]),
                  A([0.125, 1., 8., 0.125, 1., 8., 0.125, 1., 8.])]
         for i in range(4):
@@ -283,11 +282,11 @@ class IntervalTest(unittest.TestCase):
         w = A([[4, -5, 6], [7, 8, 9]])
         b = A([1, 3, 5])
         crl = A([0 * 4 + 1 * 7 + 1,
-                        2 * (-5) + 1 * 8 + 3,
-                        0 * 6 + 1 * 9 + 5])
+                 2 * (-5) + 1 * 8 + 3,
+                 0 * 6 + 1 * 9 + 5])
         cru = A([2 * 4 + 3 * 7 + 1,
-                        0 * (-5) + 3 * 8 + 3,
-                        2 * 6 + 3 * 9 + 5])
+                 0 * (-5) + 3 * 8 + 3,
+                 2 * 6 + 3 * 9 + 5])
         tinpl, tinpu = T.tensor3s('inpl', 'inpu')
         iinp = Interval(tinpl, tinpu)
         res = iinp.flatten().dot(w)
@@ -388,14 +387,14 @@ class IntervalTest(unittest.TestCase):
 
     def test_sum(self):
         vl = A([[[-3, 2],
-                       [5, 6]],
-                       [[1, -1],
-                       [9, 8]]])
+                 [5, 6]],
+                [[1, -1],
+                 [9, 8]]])
         n = 10
         vu = A([[[n, n],
-                        [n, n]],
-                       [[n, n],
-                        [n, n]]])
+                 [n, n]],
+                [[n, n],
+                 [n, n]]])
         tvl, tvu = T.tensor3s('tvl', 'tvu')
         d = {tvl: vl, tvu: vu}
         itv = Interval(tvl, tvu)
@@ -420,22 +419,22 @@ class IntervalTest(unittest.TestCase):
 
     def test_abs(self):
         vl = A([[[-3, 2],
-                        [5, 6]],
-                       [[1, -1],
-                        [9, 8]]])
+                 [5, 6]],
+                [[1, -1],
+                 [9, 8]]])
         vu = A([[[-2, 3],
-                        [5, 7]],
-                       [[1, 1],
-                        [9, 9]]])
+                 [5, 7]],
+                [[1, 1],
+                 [9, 9]]])
         tvl, tvu = T.tensor3s('tvl', 'tvu')
         d = {tvl: vl, tvu: vu}
         itv = Interval(tvl, tvu)
         res = itv.abs()
         l, u = res.eval(d)
         arae(l, A([[[2, 2], [5, 6]],
-                          [[1, 0], [9, 8]]]))
+                   [[1, 0], [9, 8]]]))
         arae(u, A([[[3, 3], [5, 7]],
-                          [[1, 1], [9, 9]]]))
+                   [[1, 1], [9, 9]]]))
 
     def test_T(self):
         vl = A([[1, 2], [3, 4]])
@@ -511,7 +510,7 @@ class IntervalTest(unittest.TestCase):
         arae(l4, u4)
         arae(l1, A([[1]]))
         arae(l4, A([[1, 0, 0, 0], [0, 1, 0, 0],
-                           [0, 0, 1, 0], [0, 0, 0, 1]]))
+                    [0, 0, 1, 0], [0, 0, 0, 1]]))
 
 
 if __name__ == '__main__':

@@ -25,6 +25,7 @@ def arae(x, y):
     else:
         return assert_array_almost_equal(x, y)
 
+
 def A(x):
     return np.array(x, dtype=theano.config.floatX)
 

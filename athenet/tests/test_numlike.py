@@ -135,6 +135,29 @@ class NumlikeTest(unittest.TestCase):
                               (1, 1), (2, 2), 1)
 
     @raises(NotImplementedError)
+    def test_op_d_relu(self):
+        _ = Numlike().op_d_relu(Numlike())
+
+    @raises(NotImplementedError)
+    def test_op_d_max_pool(self):
+        _ = Numlike().op_d_max_pool(Numlike(), (2, 2, 2, 2), (3, 3), (3, 3),
+                                    (1, 1))
+
+    @raises(NotImplementedError)
+    def test_op_d_avg_pool(self):
+        _ = Numlike().op_d_avg_pool(Numlike(), (2, 2, 2, 2), (3, 3), (3, 3),
+                                    (1, 1))
+
+    @raises(NotImplementedError)
+    def test_op_d_norm(self):
+        _ = Numlike().op_d_norm(Numlike(), (1, 1, 1, 1), 1, 1, 1, 1)
+
+    @raises(NotImplementedError)
+    def test_op_d_conv(self):
+        _ = Numlike().op_d_conv((1, 1, 1, 1), (1, 1, 1), Numlike(),
+                                (1, 1), (1, 1), 1)
+
+    @raises(NotImplementedError)
     def test_derest_output(self):
         _ = Numlike.derest_output(3)
 

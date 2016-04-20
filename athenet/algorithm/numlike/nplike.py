@@ -84,6 +84,9 @@ class Nplike(Numlike):
     def reshape(self, shape):
         return Nplike(self.value.reshape(shape))
 
+    def reshape_for_padding(self, *args):
+        return super(Nplike, self).reshape_for_padding(*args)
+
     def flatten(self):
         return Nplike(self.value.flatten())
 
@@ -117,6 +120,10 @@ class Nplike(Numlike):
 
     def eval(self):
         return self.value
+
+    @staticmethod
+    def derest_output(self, *args):
+        return super(Nplike, self).derest_output(*args)
 
     def __repr__(self):
         """Standard repr method."""
