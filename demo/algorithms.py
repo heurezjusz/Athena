@@ -26,8 +26,9 @@ parser.add_argument("-a", "--algorithm",
                          " * sender: simple_neuron_deleter (default)\n"
                          " * sender2: simple_neuron_deleter2\n"
                          " * rat: sparsify_smallest_on_network\n"
-                         " * filters: sharpen_filters",
-                    choices=["sender", "sender2", "rat", "filters"],
+                         " * filters: sharpen_filters\n"
+                         " * derest: derest",
+                    choices=["sender", "sender2", "rat", "filters", "derest"],
                     default="sender")
 
 parser.add_argument("-n", "--network",
@@ -55,7 +56,8 @@ parser.add_argument("-d", "--dataset", type=int,
                          " * simple_neuron_deleter (sender): 2\n"
                          " * simple_neuron_deleter2 (sender2): 2\n"
                          " * sparsify_smallest_on_network (rat): 3\n"
-                         " * sharpen_filters (filters): 3\n",
+                         " * sharpen_filters (filters): 3\n"
+                         " * derest: 3",
                     default=0)
 
 

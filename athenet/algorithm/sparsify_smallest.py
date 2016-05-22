@@ -2,12 +2,7 @@ import numpy
 
 from athenet.algorithm.deleting import delete_weights_by_layer_fractions,\
     delete_weights_by_global_fraction
-
-
-def _to_indicators(weights):
-    weights = abs(numpy.array(weights))
-    max_value = numpy.amax(weights)
-    return 1. - weights/max_value
+from athenet.algorithm.utils import to_indicators
 
 
 def get_smallest_indicators(layers):
@@ -22,7 +17,7 @@ def get_smallest_indicators(layers):
     :param iterable layers: layers to get indicators for
     :return: indicators
     """
-    return _to_indicators([layer.W for layer in layers])
+    return to_indicators([layer.W for layer in layers])
 
 
 def get_nearest_to_global_mean_indicators(layers):
@@ -42,12 +37,12 @@ def get_nearest_to_global_mean_indicators(layers):
     weights = numpy.concatenate(
         [layer.W.flatten() for layer in layers])
     mean = numpy.mean(weights)
-    return _to_indicators([abs(mean - layer.W) for layer in layers])
+    return to_indicators([abs(mean - layer.W) for layer in layers])
 
 
 def _get_nearest_to_layer_mean_indicators(layer):
     mean = numpy.mean(layer.W)
-    return _to_indicators(mean - layer.W)
+    return to_indicators(mean - layer.W)
 
 
 def get_nearest_to_layers_mean_indicators(layers):

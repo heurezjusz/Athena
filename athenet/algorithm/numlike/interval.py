@@ -278,23 +278,36 @@ class Interval(Numlike):
 
     def dot(self, other):
         """Returns dot product of Interval(self) vector and a number array
-        (other).
+        or Interval (other).
 
-        :param numpy.ndarray or theano.tensor other: number array to be
+        :param Interval or numpy.ndarray or theano.tensor other: array to be
                                                      multiplied
         :rtype: Interval
         """
-        lower = self.lower
-        upper = self.upper
-        other_negative = T.minimum(other, 0.0)
-        other_positive = T.maximum(other, 0.0)
-        lower_pos_dot = T.dot(lower, other_positive)
-        lower_neg_dot = T.dot(lower, other_negative)
-        upper_pos_dot = T.dot(upper, other_positive)
-        upper_neg_dot = T.dot(upper, other_negative)
-        res_lower = lower_pos_dot + upper_neg_dot
-        res_upper = upper_pos_dot + lower_neg_dot
-        return Interval(res_lower, res_upper)
+        if isinstance(other, Interval):
+            ll = self.lower.dot(other.lower)
+            lu = self.lower.dot(other.upper)
+            ul = self.upper.dot(other.lower)
+            uu = self.upper.dot(other.upper)
+            l = T.minimum(ll, lu)
+            l = T.minimum(l, ul)
+            l = T.minimum(l, uu)
+            u = T.maximum(ll, lu)
+            u = T.maximum(u, ul)
+            u = T.maximum(u, uu)
+            return Interval(l, u)
+        else:
+            lower = self.lower
+            upper = self.upper
+            other_negative = T.minimum(other, 0.0)
+            other_positive = T.maximum(other, 0.0)
+            lower_pos_dot = T.dot(lower, other_positive)
+            lower_neg_dot = T.dot(lower, other_negative)
+            upper_pos_dot = T.dot(upper, other_positive)
+            upper_neg_dot = T.dot(upper, other_negative)
+            res_lower = lower_pos_dot + upper_neg_dot
+            res_upper = upper_pos_dot + lower_neg_dot
+            return Interval(res_lower, res_upper)
 
     def max(self, other):
         """Returns interval such that for any numbers (x, y) in a pair of
@@ -718,8 +731,8 @@ class Interval(Numlike):
                                 if (at_f_h_neigh, at_f_w_neigh) != (
                                         at_f_h, at_f_w):
                                     neigh_slice = activation[:, :,
-                                                             at_f_h_neigh,
-                                                             at_f_w_neigh]
+                                                  at_f_h_neigh,
+                                                  at_f_w_neigh]
                                     neigh_max_itv = \
                                         neigh_max_itv.max(neigh_slice)
                         # must have impact on output
@@ -1047,7 +1060,7 @@ class Interval(Numlike):
         output = self
         if stride == (1, 1):
             weights = weights[:, :, ::-1, ::-1]
-            rev_weights = weights.dimshuffle(1, 0, 2, 3)
+            rev_weights = weights.transpose((1, 0, 2, 3))
             rev_weights_neg = T.minimum(rev_weights, 0.0)
             rev_weights_pos = T.maximum(rev_weights, 0.0)
             rev_h = h + 2 * pad_h - fh + 1
@@ -1177,3 +1190,8 @@ class Interval(Numlike):
         :rtype: Boolean
         """
         return T.and_(T.lt(self.lower, 0.0), T.gt(self.upper, 0.0))
+
+    def concat(self, other, axis=0):
+        lower = T.concatenate([self.lower, other.lower], axis=axis)
+        upper = T.concatenate([self.upper, other.upper], axis=axis)
+        return Interval(lower, upper)

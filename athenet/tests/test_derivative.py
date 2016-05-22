@@ -10,7 +10,14 @@ from nose.tools import assert_almost_equal as aae, \
     assert_greater as ag
 from numpy.testing import assert_array_almost_equal as arae
 from athenet.algorithm.numlike import Interval as Itv, Nplike
-from athenet.algorithm.derest.derivative import *
+
+from athenet.algorithm.derest.layers.fully_connected import d_fully_connected
+from athenet.algorithm.derest.layers.convolutional import d_conv
+from athenet.algorithm.derest.layers.pool import d_pool
+from athenet.algorithm.derest.layers.dropout import d_dropout
+from athenet.algorithm.derest.layers.norm import d_norm
+from athenet.algorithm.derest.layers.relu import d_relu
+from athenet.algorithm.derest.layers.softmax import d_softmax
 
 theano.config.exception_verbosity = 'high'
 
@@ -52,7 +59,7 @@ class DerivativeTest2(unittest.TestCase):
         return a.reshape(shp)
 
 
-class DerivativeTest(object):
+class DerivativeTest(unittest.TestCase):
     pass
 
 
@@ -113,21 +120,9 @@ class FullyConnectedDerivativeTest(DerivativeTest):
         dout = thv([[3, 6], [1, 2]])
         idout = Itv(dout, dout)
         w = thv([[9, 15], [12, 18]])
-        shp = (1, 2)
+        shp = (2, 2)
         din = d_fully_connected(idout, w, shp)
         l, u = din.eval()
-        arae(l, u)
-        arae(l, A([[117, 144], [39, 48]]))
-
-    def test_2D_batches2(self):
-        dout = A([[3, 6], [1, 2]])
-        tdout = T.dmatrix('tdout')
-        idout = Itv(tdout, tdout)
-        d = {tdout: dout}
-        w = thv([[9, 15], [12, 18]])
-        shp = (1, 2)
-        din = d_fully_connected(idout, w, shp)
-        l, u = din.eval(d)
         arae(l, u)
         arae(l, A([[117, 144], [39, 48]]))
 

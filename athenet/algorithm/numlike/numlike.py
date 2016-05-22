@@ -401,3 +401,16 @@ class Numlike(object):
         :rtype: Numlike
         """
         raise NotImplementedError
+
+    @staticmethod
+    def concat(self, other, axis = 0):
+        """
+        :param other: Numlike variable to be concationated with
+        :type other: Numlike
+        :param axis: The axis along which the Numlikes will be joined.
+        Default is 0.
+        :type axis: int, optional
+        :return: Numlike object analogic to
+                np.concatenate([self, other], axis=1)
+        """
+        raise NotImplementedError
