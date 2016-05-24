@@ -3,38 +3,22 @@ sparsifying.
 
 This module contains NpInterval class and auxiliary objects.
 """
+from theano import function
+from theano import tensor as T
 
-from athenet.algorithm.numlike import Numlike
 from itertools import product
 import numpy as np
 import math
 
-NEUTRAL_INTERVAL_LOWER = 0.0
-NEUTRAL_INTERVAL_UPPER = 0.0
-NEUTRAL_INTERVAL_VALUES = (NEUTRAL_INTERVAL_LOWER, NEUTRAL_INTERVAL_UPPER)
-
-DEFAULT_INTERVAL_LOWER = 0.0
-DEFAULT_INTERVAL_UPPER = 255.0
-DEFAULT_INTERVAL_VALUES = (DEFAULT_INTERVAL_LOWER, DEFAULT_INTERVAL_UPPER)
+from athenet.algorithm.numlike import Interval
 
 
-class NpInterval(Numlike):
-    def __init__(self, lower, upper):
-        """
-        :param numpy.ndarray lower:
-        :param numpy.ndarray upper:
-        :return:
-        """
-        self.lower = lower
-        self.upper = upper
+class NpInterval(Interval):
 
-    def __getitem__(self, at):
-        """Returns specified slice of NpInterval.
+    @staticmethod
+    def construct(lower, upper):
+        return NpInterval(lower, upper)
 
-        :at: Coordinates / slice to be taken.
-        :rtype: NpInterval
-        """
-        return NpInterval(self.lower[at], self.upper[at])
 
     def __setitem__(self, at, other):
         """Just like numpy __setitem__ function, but as a operator.
@@ -73,6 +57,16 @@ class NpInterval(Numlike):
             res_lower = self.lower + other
             res_upper = self.upper + other
         return NpInterval(res_lower, res_upper)
+
+    def antiadd(self, other):
+        """For given NpInterval returns NpInterval which shuold be added
+        to id to get NpInterval equal to self.
+
+        :param other: NpInterval which was added.
+        :type other: NpInterval
+        :rtype: NpInterval
+        """
+        return NpInterval(self.lower - other.lower, self.upper - other.upper)
 
     def __sub__(self, other):
         """Returns difference between two numlikes.
@@ -132,24 +126,6 @@ class NpInterval(Numlike):
             upper = self.upper / other
             return NpInterval(np.minimum(lower, upper),
                               np.maximum(lower, upper))
-
-    def __rdiv__(self, other):
-        """Returns quotient of other and self.
-
-        :param other: dividend
-        :type other: float
-        :rtype: Nplike
-        .. warning:: divisor (self) should not contain zero, other must be
-                     float
-        """
-        if isinstance(other, NpInterval):
-            # Should never happen. __div__ should be used instead.
-            raise NotImplementedError
-        else:
-            if other > 0:
-                return NpInterval(other / self.upper, other / self.lower)
-            else:
-                return NpInterval(other / self.lower, other / self.upper)
 
     def reciprocal(self):
         """Returns reciprocal (1/x) of the NpInterval.
@@ -259,49 +235,6 @@ class NpInterval(Numlike):
             return NpInterval(np.maximum(self.lower, other),
                               np.maximum(self.upper, other))
 
-    def amax(self, axis=None, keepdims=False):
-        """Returns maximum of a NpInterval along an axis.
-
-        :param axis: axis along which max is evaluated
-        :param Boolean keepdims: whether flattened dimensions should remain
-        :rtype: NpInterval
-        """
-        lower = self.lower.max(axis=axis, keepdims=keepdims)
-        upper = self.upper.max(axis=axis, keepdims=keepdims)
-        return NpInterval(lower, upper)
-
-    def reshape(self, shape):
-        """Reshapes NpInterval
-
-        :param tuple shape:
-        """
-        return NpInterval(self.lower.reshape(shape),
-                          self.upper.reshape(shape))
-
-    def flatten(self):
-        """Flattens NpInterval
-
-        :rtype: NpInterval
-        """
-        return NpInterval(self.lower.flatten(),
-                          self.upper.flatten())
-
-    def sum(self, axis=None, dtype=None, keepdims=False):
-        """Sum of array elements over a given axis like in numpy.ndarray.
-
-        :param axis: axis along which this function sums
-        :param numeric type or None dtype: just like dtype argument in
-                                   theano.tensor.sum
-        :param Boolean keepdims: Whether to keep squashed dimensions of size 1
-        :type axis: integer, tuple of integers or None
-        :rtype: NpInterval
-
-        """
-        return NpInterval(
-            self.lower.sum(axis=axis, dtype=dtype, keepdims=keepdims),
-            self.upper.sum(axis=axis, dtype=dtype, keepdims=keepdims)
-        )
-
     def abs(self):
         """Returns absolute value of NpInterval.
 
@@ -312,16 +245,8 @@ class NpInterval(Numlike):
         upper = np.maximum(-self.lower, self.upper)
         return NpInterval(lower, upper)
 
-    @property
-    def T(self):
-        """Tensor transposition like in numpy.ndarray.
-
-        :rtype: NpInterval
-        """
-        return NpInterval(self.lower.T, self.upper.T)
-
-    @staticmethod
-    def from_shape(shp, neutral=True, lower_val=None, upper_val=None):
+    @classmethod
+    def from_shape(cls, shp, neutral=True, lower_val=None, upper_val=None):
         """Returns NpInterval of shape shp with given lower and upper values.
 
         :param tuple of integers or integer shp : shape of created NpInterval
@@ -333,11 +258,9 @@ class NpInterval(Numlike):
         :param float upper_val: value of upper bound
         """
         if lower_val is None:
-            lower_val = NEUTRAL_INTERVAL_LOWER if neutral else \
-                DEFAULT_INTERVAL_LOWER
+            lower_val = cls.NEUTRAL_LOWER if neutral else cls.DEFAULT_LOWER
         if upper_val is None:
-            upper_val = NEUTRAL_INTERVAL_UPPER if neutral else \
-                DEFAULT_INTERVAL_UPPER
+            upper_val = cls.NEUTRAL_UPPER if neutral else cls.DEFAULT_UPPER
         if lower_val > upper_val:
             if lower_val != np.inf or upper_val != -np.inf:
                 raise ValueError("lower_val > upper_val")
@@ -348,60 +271,62 @@ class NpInterval(Numlike):
     @staticmethod
     def _reshape_for_padding(layer_input, image_shape, batch_size, padding,
                              value=0.0):
-        if padding == (0, 0):
-            return layer_input
 
         h, w, n_channels = image_shape
+
+        if padding == (0, 0):
+            return np.broadcast_to(layer_input, (batch_size, n_channels, h, w))
+
         pad_h, pad_w = padding
         h_in = h + 2 * pad_h
         w_in = w + 2 * pad_w
 
         extra_pixels = np.full((batch_size, n_channels, h_in, w_in), value)
         extra_pixels[:, :, pad_h:(pad_h+h), pad_w:(pad_w+w)] = layer_input
+        #maybe it will need broadcast_to too
         return extra_pixels
-
-    def reshape_for_padding(self, shape, padding, lower_val=None,
-                            upper_val=None):
-        """Returns padded Numlike.
-
-        :param tuple of 4 integers shape: shape of input in format
-                                          (batch size, number of channels,
-                                           height, width)
-        :param pair of integers padding: padding to be applied
-        :param float lower_val: value of lower bound in new fields
-        :param float upper_val: value of upper bound in new fields
-        :returns: padded layer_input
-        :rtype: NpInterval
-        """
-        if lower_val is None:
-            lower_val = NEUTRAL_INTERVAL_LOWER
-        if upper_val is None:
-            upper_val = NEUTRAL_INTERVAL_UPPER
-        n_batches, n_in, h, w = shape
-        padded_low = self._reshape_for_padding(self.lower, (h, w, n_in),
-                                               n_batches, padding, lower_val)
-        padded_upp = self._reshape_for_padding(self.upper, (h, w, n_in),
-                                               n_batches, padding, upper_val)
-        return NpInterval(padded_low, padded_upp)
 
     def eval(self, *args):
         """Returns some readable form of stored value."""
         return self
 
     def op_relu(self):
-        """Returns result of relu operation on given Numlike.
+        """Returns result of relu operation on given NpInterval.
 
-        :rtype: Numlike
+        :rtype: NpInterval
         """
-        raise NotImplementedError
+        lower = np.maximum(self.lower, 0.0)
+        upper = np.maximum(self.upper, 0.0)
+        return NpInterval(lower, upper)
 
     def op_softmax(self, input_shp):
-        """Returns result of softmax operation on given Numlike.
+        """Returns result of softmax operation on given NpInterval.
 
         :param integer input_shp: shape of 1D input
-        :rtype: Numlike
+        :rtype: NpInterval
         """
-        raise NotImplementedError
+        result = NpInterval.from_shape(input_shp, neutral=True)
+        for i in xrange(input_shp):
+            input_low = (self - self.upper[i]).exp()
+            input_upp = (self - self.lower[i]).exp()
+            sum_low = NpInterval.from_shape(1, neutral=True)
+            sum_upp = NpInterval.from_shape(1, neutral=True)
+            for j in xrange(input_shp):
+                if j != i:
+                    sum_low = sum_low + input_low[j]
+                    sum_upp = sum_upp + input_upp[j]
+            # Could consider evaluation below but it gives wrong answers.
+            # It might be because of arithmetic accuracy.
+            # sum_low = input_low.sum() - input_low[i]
+            # sum_upp = input_upp.sum() - input_upp[i]
+            upper_counter_low = input_low.upper[i]
+            lower_counter_upp = input_upp.lower[i]
+            upper_low = upper_counter_low / \
+                (sum_low[0].lower + upper_counter_low)
+            lower_upp = lower_counter_upp / \
+                (sum_upp[0].upper + lower_counter_upp)
+            result[i] = NpInterval(lower_upp, upper_low)
+        return result
 
     def op_norm(self, input_shape, local_range, k, alpha, beta):
         """Returns estimated activation of LRN layer.
@@ -414,9 +339,70 @@ class NpInterval(Numlike):
         :param integer alpha: local range normalization alpha argument
         :param integer beta: local range normalization beta argument
         :type input_shape: tuple of 3 integers
-        :rtype: Numlike
+        :rtype: NpInterval
         """
-        raise NotImplementedError
+        alpha /= local_range
+        half = local_range / 2
+        x = self
+        sq = self.square()
+        n_channels, h, w = input_shape
+        extra_channels = self.from_shape((n_channels + 2 * half, h, w),
+                                         neutral=True)
+        extra_channels[half:half + n_channels, :, :] = sq
+        s = self.from_shape(input_shape, neutral=True)
+
+        for i in xrange(local_range):
+            if i != half:
+                s += extra_channels[i:i + n_channels, :, :]
+
+        c = s * alpha + k
+
+        def norm((arg_x, arg_c)):
+            return arg_x / np.power(arg_c + alpha * np.sqr(arg_x), beta)
+
+        def in_range((range_), val):
+            return np.logical_and(np.less(range_.lower, val),
+                                  np.less(val, range_.upper))
+
+        def c_extr_from_x(arg_x):
+            return np.square(arg_x) * ((2 * beta - 1) * alpha)
+
+        def x_extr_from_c(arg_c):
+            return np.sqrt(arg_c / ((2 * beta - 1) * alpha))
+
+        res = NpInterval.from_shape(input_shape, lower_val=np.inf,
+                                    upper_val=-np.inf)
+        corners = [(x.lower, c.lower), (x.lower, c.upper),
+                   (x.upper, c.lower), (x.upper, c.upper)]
+        for corner in corners:
+            res.lower = np.minimum(res.lower, norm(corner))
+            res.upper = np.maximum(res.upper, norm(corner))
+        maybe_extrema = [
+            (0, c.lower), (0, c.upper),
+            (x_extr_from_c(c.lower), c.lower),
+            (x_extr_from_c(c.upper), c.upper),
+            (x_extr_from_c(c.lower) * (-1), c.lower),
+            (x_extr_from_c(c.upper) * (-1), c.upper),
+            (x.lower, c_extr_from_x(x.lower)),
+            (x.upper, c_extr_from_x(x.upper))
+        ]
+        extrema_conds = [
+            in_range(x, maybe_extrema[0][0]),
+            in_range(x, maybe_extrema[1][0]),
+            in_range(x, maybe_extrema[2][0]),
+            in_range(x, maybe_extrema[3][0]),
+            in_range(x, maybe_extrema[4][0]),
+            in_range(x, maybe_extrema[5][0]),
+            in_range(c, maybe_extrema[6][1]),
+            in_range(c, maybe_extrema[7][1])
+        ]
+        for m_extr, cond in zip(maybe_extrema, extrema_conds):
+            norm_res = norm(m_extr)
+            res.lower = np.select([cond, True],
+                                  [np.minimum(res.lower, norm_res), res.lower])
+            res.upper = np.select([cond, True],
+                                  [np.maximum(res.upper, norm_res), res.upper])
+        return res
 
     def op_conv(self, weights, image_shape, filter_shape, biases, stride,
                 padding, n_groups):
@@ -447,20 +433,48 @@ class NpInterval(Numlike):
         :type n_groups: integer
         :rtype: Numlike
         """
-        raise NotImplementedError
+        if True:
+            l, u = T.tensor3(), T.tensor3()
+            l2, u2 = self._theano_op_conv(l, u, weights, image_shape, filter_shape,
+                                      biases, stride, padding, n_groups)
+            self.op_conv_function = function(
+                [l, u],
+                [l2, u2]
+            )
+
+        lower, upper = self.op_conv_function(self.lower, self.upper)
+
+        return NpInterval(lower, upper)
 
     def op_d_relu(self, activation):
         """Returns estimated impact of input of relu layer on output of
         network.
 
-        :param Numlike activation: estimated activation of input
-        :param Numlike self: estimated impact of output of layer on output
+        :param NpInterval activation: estimated activation of input
+        :param NpInterval self: estimated impact of output of layer on output
                                of network in shape (batch_size, number of
                                channels, height, width)
         :returns: Estimated impact of input on output of network
-        :rtype: Numlike
+        :rtype: NpInterval
         """
-        raise NotImplementedError
+        lower_than_zero = activation.upper <= 0.
+        contains_zero = np.logical_and(activation.lower < 0,
+                                       activation.upper > 0)
+
+        der_with_zero_l = np.minimum(self.lower, 0.)
+        der_with_zero_u = np.maximum(self.upper, 0.)
+
+        result_l = np.select([lower_than_zero, contains_zero, True],
+                             [0., der_with_zero_l, self.lower])
+        result_u = np.select([lower_than_zero, contains_zero, True],
+                             [0., der_with_zero_u, self.upper])
+        return NpInterval(result_l, result_u)
+
+    @staticmethod
+    def select(bool_list, interval_list):
+        lower = [a.lower if isinstance(a, NpInterval) else a for a in interval_list]
+        upper = [a.upper if isinstance(a, NpInterval) else a for a in interval_list]
+        return NpInterval(np.select(bool_list, lower), np.select(bool_list, upper))
 
     def op_d_max_pool(self, activation, input_shape, poolsize, stride,
                       padding):
@@ -480,7 +494,67 @@ class NpInterval(Numlike):
         :returns: Estimated impact of input on output of network
         :rtype: Numlike
         """
-        raise NotImplementedError
+        # n_batches, n_in, h, w - number of batches, number of channels,
+        # image height, image width
+        n_batches, n_in, h, w = input_shape
+
+        pad_h, pad_w = padding
+        activation = activation.reshape_for_padding(input_shape, padding,
+                                                    lower_val=-np.inf,
+                                                    upper_val=-np.inf)
+        input_shape = (n_batches, n_in, h + 2 * pad_h, w + 2 * pad_w)
+        h += 2 * pad_h
+        w += 2 * pad_w
+
+        # fh, fw - pool height, pool width
+        fh, fw = poolsize
+        stride_h, stride_w = stride
+        output = self
+        result = activation.from_shape(input_shape, neutral=True)
+
+        for at_h, at_w in product(xrange(0, h - fh + 1, stride_h),
+                                  xrange(0, w - fw + 1, stride_w)):
+            # at_out_h - height of output corresponding to pool at position
+            # at_h
+            at_out_h = at_h / stride_h
+            # at_out_w - width of output corresponding to pool at position
+            # at_w
+            at_out_w = at_w / stride_w
+
+            for at_f_h, at_f_w in product(xrange(at_h, at_h + fh),
+                                          xrange(at_w, at_w + fw)):
+                # maximum lower and upper value of neighbours
+                neigh_max_low = -np.inf
+                neigh_max_upp = -np.inf
+                neigh_max_itv = NpInterval(neigh_max_low, neigh_max_upp)
+                act_slice = activation[:, :, at_f_h, at_f_w]
+
+                # setting maximum lower and upper of neighbours
+                for at_f_h_neigh, at_f_w_neigh in \
+                        product(xrange(at_h, at_h + fh),
+                                xrange(at_w, at_w + fw)):
+
+                    if (at_f_h_neigh, at_f_w_neigh) != (at_f_h, at_f_w):
+                        neigh_slice = activation[:, :, at_f_h_neigh,
+                                                 at_f_w_neigh]
+                        neigh_max_itv = neigh_max_itv.max(neigh_slice)
+
+                # must have impact on output
+                must = act_slice.lower > neigh_max_itv.upper
+                # cannot have impact on output
+                cannot = act_slice.upper < neigh_max_itv.lower
+                # or might have impact on output
+
+
+                output_slice = output[:, :, at_out_h, at_out_w]
+                output_with_0 = NpInterval(np.minimum(output_slice.lower, 0.),
+                                           np.maximum(output_slice.upper, 0.))
+
+                result[:, :, at_f_h, at_f_w] += \
+                    NpInterval.select([must, cannot, True],
+                                      [output_slice, 0., output_with_0])
+
+        return result[:, :, pad_h:h - pad_h, pad_w:w - pad_w]
 
     def op_d_avg_pool(self, activation, input_shape, poolsize, stride,
                       padding):
@@ -500,7 +574,42 @@ class NpInterval(Numlike):
         :returns: Estimated impact of input on output of network
         :rtype: Numlike
         """
-        raise NotImplementedError
+        # n_batches, n_in, h, w - number of batches, number of channels,
+        # image height, image width
+        n_batches, n_in, h, w = input_shape
+
+        pad_h, pad_w = padding
+        activation = activation.reshape_for_padding(input_shape, padding,
+                                                    lower_val=0.,
+                                                    upper_val=0.)
+        input_shape = (n_batches, n_in, h + 2 * pad_h, w + 2 * pad_w)
+        h += 2 * pad_h
+        w += 2 * pad_w
+
+        # fh, fw - pool height, pool width
+        fh, fw = poolsize
+        stride_h, stride_w = stride
+        output = self
+        result = activation.from_shape(input_shape, neutral=True)
+
+        for at_h, at_w in product(xrange(0, h - fh + 1, stride_h),
+                                  xrange(0, w - fw + 1, stride_w)):
+            # at_out_h - height of output corresponding to pool at position
+            # at_h
+            at_out_h = at_h / stride_h
+            # at_out_w - width of output corresponding to pool at position
+            # at_w
+            at_out_w = at_w / stride_w
+
+            output_slice = output[:, :, at_out_h, at_out_w].\
+                reshape((n_batches, n_in, 1, 1))
+
+            result_slice = result[:, :, at_h:at_h + fh, at_w:at_w + fw]
+            result_slice += output_slice
+            result[:, :, at_h:at_h + fh, at_w:at_w + fw] = result_slice
+
+        result /= np.prod(poolsize)
+        return result[:, :, pad_h:h - pad_h, pad_w:w - pad_w]
 
     def op_d_norm(self, activation, input_shape, local_range, k, alpha,
                   beta):
@@ -521,9 +630,11 @@ class NpInterval(Numlike):
         :param float beta: local range normalization beta argument
         :rtype: NpInterval
         """
-        result = NpInterval(np.zeros_like(activation.lower),
-                            np.zeros_like(activation.upper))
+        result = NpInterval(np.zeros(input_shape),
+                            np.zeros(input_shape))
         activation_sqares = activation.square()
+        local_range /= 2
+
 
         # some piece of math, unnecessary in any other place:
         # derivative for x placed in denominator of norm function
@@ -538,29 +649,40 @@ class NpInterval(Numlike):
 
             :return: value of derivative of norm function
             """
-            return (alpha * (1-2*beta) * x**2 + c) / \
-                   (alpha * x**2 + c) ** (beta + 1)
+            return (alpha * (1 - 2 * beta) * x ** 2 + c) / \
+                   (alpha * x ** 2 + c) ** (beta + 1)
+
 
         # possible extremas
         def root1_2d(c_low, c_up, x_low, x_up):
+            # df / dx = 0
             # returns roots of derivative of derivetive of norm function
             # x = 0
             # intersects solution rectangle with x = 0
-            if x_low <= 0 and x_up >= 0:
-                return [(0, c_low), (0, c_up)]
-            return []
+
+            possibilities_c0 = [(0., c) for c in [c_low, c_up]]
+            possibilities_c1 = [
+                (-math.sqrt(3 * c) / math.sqrt(alpha * (2 * beta - 1)), c)
+                for c in [c_low, c_up]]
+            possibilities_c2 = [
+                (math.sqrt(3 * c) / math.sqrt(alpha * (2 * beta - 1)), c)
+                for c in [c_low, c_up]]
+
+            return [(x, c) for x, c in possibilities_c0 + possibilities_c1
+                    + possibilities_c2 if x_low <= x <= x_up]
+
 
         def root2_2d(c_low, c_up, x_low, x_up):
+            # df / dc = 0
             # returns roots of derivative of derivetive of norm function
             # x = - sqrt(c) / sqrt (alpha * (2*beta+1))
-            # intersects solution rectangle with half-parabola above
-            possibilities_c = [(-math.sqrt(c) / math.sqrt(alpha*(2*beta+1)), c)
-                               for c in [c_low, c_up]]
-            possibilities_x = [(x, alpha*(2*beta+1) * x**2)
+            # intersects solution rectangle with parabola above
+
+            possibilities_x = [(x, alpha * (2 * beta + 1) * x ** 2)
                                for x in [x_low, x_up]]
 
-            return [(x, c) for x, c in possibilities_x + possibilities_c
-                    if x_low <= x and x <= x_up and c_low <= c and c <= c_up]
+            return [(x, c) for x, c in possibilities_x
+                    if c_low <= c and c <= c_up]
 
         # derivative for x not from denominator
         def der_not_eq(x, y, c):
@@ -576,21 +698,60 @@ class NpInterval(Numlike):
 
             :return: Returns value of derivative of norm function
             """
-            return 2 * alpha*beta * x*y / (c + alpha*(x**2 + y**2)) ** (beta+1)
+            return -2 * alpha * beta * x * y / \
+                   (c + alpha * (x ** 2 + y ** 2)) ** (beta + 1)
+
 
         # possible extremas of this derivative
         def extremas_3d(x_low, x_up, y_low, y_up, c_low, c_up):
-            # as far as wolfram knows, possible extremas are for x=0 and y=0
             return [(x, y, c) for x, y, c in
-                    product([x_low, x_up, 0], [y_low, y_up, 0], [c_low, c_up])
+                    product([x_low, x_up], [y_low, y_up], [c_low, c_up])
+                    if x_low <= x <= x_up and y_low <= y <= y_up]
+
+
+        def extremas_3d_dx(x_low, x_up, y_low, y_up, c_low, c_up):
+            # ddf/dx/dx = 0
+            # a*y**2=a(2*b+1)*x**2-c
+            a = alpha
+            b = beta
+            sqrt1 = [(math.sqrt((c + a * y ** 2) / (a * (2 * b + 1))), y, c)
+                     for y, c in product([y_low, y_up], [c_low, c_up])]
+            sqrt2 = [(-math.sqrt((c + a * y ** 2) / (a * (2 * b + 1))), y, c)
+                     for y, c in product([y_low, y_up], [c_low, c_up])]
+            return [(x, y, c) for x, y, c in sqrt1 + sqrt2
+                    if x_low <= x <= x_up]
+
+        def extremas_3d_dy(x_low, x_up, y_low, y_up, c_low, c_up):
+            # ddf/dx/dy = 0
+            # a*x**2=a(2*b+1)*y**2-c
+            a = alpha
+            b = beta
+            sqrt1 = [(x, math.sqrt((c + a * x ** 2) / (a * (2 * b + 1))), c)
+                     for x, c in product([x_low, x_up], [c_low, c_up])]
+            sqrt2 = [(x, -math.sqrt((c + a * x ** 2) / (a * (2 * b + 1))), c)
+                     for x, c in product([x_low, x_up], [c_low, c_up])]
+            return [(x, y, c) for x, y, c in sqrt1 + sqrt2
+                    if y_low <= y <= y_up]
+
+        def extremas_3d_dxdy(x_low, x_up, y_low, y_up, c_low, c_up):
+            # ddf/dx/dy = 0 && ddf/dx/dx = 0
+            vals_cl = [sign * math.sqrt(c_low / (2 * alpha * beta))
+                       for sign in [-1, 1]]
+            vals_cu = [sign * math.sqrt(c_up / (2 * alpha * beta))
+                       for sign in [-1, 1]]
+
+            pts_low = [(x, y, c_low) for x, y in product(vals_cl, vals_cl)]
+            pts_up = [(x, y, c_up) for x, y in product(vals_cu, vals_cu)]
+
+            return [(x, y, c) for x, y, c in pts_low + pts_up
                     if x_low <= x <= x_up and y_low <= y <= y_up]
 
         batches, channels, h, w = input_shape
         for b, channel, at_h, at_w in product(xrange(batches), xrange(channels),
                                               xrange(h), xrange(w)):
             C = NpInterval(np.asarray([k]), np.asarray([k]))
-            for i in xrange(-local_range, local_range):
-                if 0 <= i + channel < channels and i != 0:
+            for i in xrange(-local_range, local_range + 1):
+                if channels > i + channel >= 0 != i:
                     C += activation_sqares[b][channel + i][at_h][at_w]
 
             Y = activation[b][channel][at_h][at_w]
@@ -600,34 +761,41 @@ class NpInterval(Numlike):
                                                    [C.lower, C.upper])]
             extremas.extend(root1_2d(C.lower, C.upper, Y.lower, Y.upper))
             extremas.extend(root2_2d(C.lower, C.upper, Y.lower, Y.upper))
-            der = NpInterval()
+            der = NpInterval(np.inf, -np.inf)
             for x, c in extremas:
                 val = der_eq(x, c)
-                if der.lower is None or der.lower > val:
+                if der.lower > val:
                     der.lower = val
-                if der.upper is None or der.upper < val:
+                if der.upper < val:
                     der.upper = val
-            result[b][channel][at_h][at_w] += self[b][channel][at_h][at_w]*der
+            result[b][channel][at_h][at_w] += der * self[b][channel][at_h][at_w]
 
-            #not_eq_case
-            for i in xrange(-local_range, local_range):
-                if i != 0 and 0 <= i + channel < channels:
-                    X = activation_sqares[b][channel + i][at_h][at_w]
-                    C = NpInterval(np.asarray([k]), np.asarray([k]))
-                    for j in xrange(-local_range, local_range):
-                        if j != 0 and j != i and 0 <= j + channel < channels:
-                            C += activation_sqares[b][channel + j][at_h][at_w]
-                    extremas = extremas_3d(X.lower, X.upper, Y.lower, Y.upper,
-                                           C.lower, C.upper)
-                    der = NpInterval()
+            # not_eq_case
+            for i in xrange(-local_range, local_range + 1):
+                if i != 0 and 0 <= (i + channel) < channels:
+                    X = activation[b][channel + i][at_h][at_w]
+                    X2 = activation_sqares[b][channel + i][at_h][at_w]
+                    C = C.antiadd(X2)
+
+                    extremas = extremas_3d(X.lower, X.upper, Y.lower,
+                                           Y.upper, C.lower, C.upper) + \
+                               extremas_3d_dx(X.lower, X.upper, Y.lower,
+                                              Y.upper, C.lower, C.upper) + \
+                               extremas_3d_dy(X.lower, X.upper, Y.lower,
+                                              Y.upper, C.lower, C.upper) + \
+                               extremas_3d_dxdy(X.lower, X.upper, Y.lower,
+                                                Y.upper, C.lower, C.upper)
+
+                    der = NpInterval(np.inf, -np.inf)
                     for x, y, c in extremas:
                         val = der_not_eq(x, y, c)
-                        if der.lower is None or der.lower > val:
+                        if der.lower > val:
                             der.lower = val
-                        if der.upper is None or der.upper < val:
+                        if der.upper < val:
                             der.upper = val
                     result[b][channel + i][at_h][at_w] += \
                         der * self[b][channel][at_h][at_w]
+                    C += X2
 
         return result
 
@@ -666,7 +834,81 @@ class NpInterval(Numlike):
         :returns: Estimated impact of input on output of network
         :rtype: Numlike
         """
-        raise NotImplementedError
+
+        # n_in, h, w - number of input channels, image height, image width
+        n_batches, n_in, h, w = input_shape
+        # n_out, fh, fw - number of output channels, filter height, filter
+        # width
+        n_out, fh, fw = filter_shape
+        pad_h, pad_w = padding
+        output = self
+
+        # g_in - number of input channels per group
+        g_in = n_in / n_groups
+        # g_out - number of output channels per group
+        g_out = n_out / n_groups
+        stride_h, stride_w = stride
+        h += 2 * pad_h
+        w += 2 * pad_w
+        padded_input_shape = (n_batches, n_in, h, w)
+        result = NpInterval.from_shape(padded_input_shape, neutral=True)
+
+        # see: flipping kernel
+        # in theano.conv_2d flipped kernel is used
+        weights = weights[:, :, ::-1, ::-1]
+        weights_neg = np.minimum(weights, 0.0)
+        weights_pos = np.maximum(weights, 0.0)
+
+        for at_g in xrange(n_groups):
+            # beginning and end of at_g'th group of input channel in input
+            at_in_from = at_g * g_in
+            at_in_to = at_in_from + g_in
+            # beginning and end of at_g'th group of output channel in weights
+            # note: amount of input and output group are equal
+            at_out_from = at_g * g_out
+            at_out_to = at_out_from + g_out
+
+            for at_h, at_w in product(xrange(0, h - fh + 1, stride_h),
+                                      xrange(0, w - fw + 1, stride_w)):
+                # at_out_h - height of output corresponding to filter at
+                # position at_h
+                at_out_h = at_h / stride_h
+                # at_out_w - height of output corresponding to filter at
+                # position at_w
+                at_out_w = at_w / stride_w
+
+                # weights slice that impacts on (at_out_h, at_out_w) in
+                # output
+                weights_pos_slice = weights_pos[at_out_from:at_out_to, :, :, :]
+                weights_neg_slice = weights_neg[at_out_from:at_out_to, :, :, :]
+                # shape of weights_slice: (g_out, g_in, h, w)
+
+                # slice of output
+                out_slice_low = output.lower[:, at_out_from:at_out_to,
+                                             at_out_h, at_out_w]
+                out_slice_low = \
+                    out_slice_low.reshape((n_batches, g_out, 1, 1, 1))
+                out_slice_upp = output.upper[:, at_out_from:at_out_to,
+                                             at_out_h, at_out_w]
+                out_slice_upp = \
+                    out_slice_upp.reshape((n_batches, g_out, 1, 1, 1))
+
+                # results
+                res_low_pos = (out_slice_low * weights_pos_slice).sum(axis=1)
+                res_low_neg = (out_slice_low * weights_neg_slice).sum(axis=1)
+                res_upp_pos = (out_slice_upp * weights_pos_slice).sum(axis=1)
+                res_upp_neg = (out_slice_upp * weights_neg_slice).sum(axis=1)
+
+                res_slice_lower = res_low_pos + res_upp_neg
+                res_slice_upper = res_upp_pos + res_low_neg
+                res_slice = NpInterval(res_slice_lower, res_slice_upper)
+
+                result[:, at_in_from:at_in_to, at_h:(at_h + fh),
+                       at_w:(at_w + fw)] += res_slice
+
+        # remove padding
+        result = result[:, :, pad_h:(h - pad_h), pad_w:(w - pad_w)]
+        return result
 
     @staticmethod
     def derest_output(n_outputs):

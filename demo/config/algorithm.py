@@ -1,6 +1,7 @@
+
 from athenet.algorithm import sparsify_smallest_on_network, sharpen_filters, \
-    sparsify_smallest_on_layers
-from athenet.algorithm import simple_neuron_deleter, simple_neuron_deleter2
+    sparsify_smallest_on_layers, simple_neuron_deleter,\
+    simple_neuron_deleter2, derest
 from athenet.models import lenet, alexnet, googlenet
 from athenet.data_loader import MNISTDataLoader, ImageNetDataLoader
 
@@ -75,7 +76,10 @@ datasets = {
                  [x / 40. for x in xrange(24, 40)]],
     "filters": [[(0.3, 1, (5, 75, 75))],
                 [(x / 10., 1, (5, 75, 75)) for x in xrange(1, 10)],
-                [(x / 20., 1, (5, 75, 75)) for x in xrange(1, 10)]]
+                [(x / 20., 1, (5, 75, 75)) for x in xrange(1, 10)]],
+    "derest": [[0.5],
+               [[x / 10.] for x in xrange(1, 10)],
+               [[x / 30.] for x in xrange(1, 20)]]
     }
 
 
@@ -87,7 +91,8 @@ algorithms = {
     "sender2": simple_neuron_deleter2,
     "rat": sparsify_smallest_on_network,
     "rat2": sparsify_smallest_on_layers,
-    "filters": sharpen_filters
+    "filters": sharpen_filters,
+    "derest": derest
     }
 
 

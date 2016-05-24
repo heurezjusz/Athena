@@ -1,11 +1,9 @@
-"""Testing athenet.algorithm.numlike.Interval class with its methods.
+"""Testing athenet.algorithm.numlike.TheanoInterval class with its methods.
 """
 
 import unittest
 from nose.tools import assert_is, assert_equal
-from athenet.algorithm.numlike.interval import Interval, \
-    NEUTRAL_INTERVAL_LOWER, NEUTRAL_INTERVAL_UPPER, \
-    DEFAULT_INTERVAL_LOWER, DEFAULT_INTERVAL_UPPER
+from athenet.algorithm.numlike.theanointerval import TheanoInterval
 import numpy as np
 from numpy.testing import assert_array_equal, assert_array_almost_equal as arae
 import theano
@@ -17,11 +15,11 @@ def A(x):
     return np.array(x, dtype=theano.config.floatX)
 
 
-class IntervalTest(unittest.TestCase):
+class TheanoIntervalTest(unittest.TestCase):
 
     def test_interval_scalar(self):
         x, y = T.scalars('x', 'y')
-        i = Interval(x, y)
+        i = TheanoInterval(x, y)
         l, u = i.lower, i.upper
         assert_is(x, l)
         assert_is(y, u)
@@ -31,7 +29,7 @@ class IntervalTest(unittest.TestCase):
 
     def test_interval_matrix(self):
         x, y = T.matrices('x', 'y')
-        i = Interval(x, y)
+        i = TheanoInterval(x, y)
         l, u = i.lower, i.upper
         assert_is(x, l)
         assert_is(y, u)
@@ -43,7 +41,7 @@ class IntervalTest(unittest.TestCase):
 
     def test_getitem(self):
         x, y = T.matrices('x', 'y')
-        i = Interval(x, y)
+        i = TheanoInterval(x, y)
         i0, i1, i2 = i[0, 0], i[1, 1], i[2, 2]
         l0, l1, l2 = i0.lower, i1.lower, i2.lower
         u0, u1, u2 = i0.upper, i1.upper, i2.upper
@@ -60,8 +58,8 @@ class IntervalTest(unittest.TestCase):
 
     def test_setitem(self):
         x, y, z, w = T.matrices('x', 'y', 'z', 'w')
-        i1 = Interval(x, y)
-        i2 = Interval(z, w)
+        i1 = TheanoInterval(x, y)
+        i2 = TheanoInterval(z, w)
         i1[:, 1:3] = i2
         f = function([x, y, z, w], [i1.lower, i1.upper])
         ex_x = A([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
@@ -76,7 +74,7 @@ class IntervalTest(unittest.TestCase):
 
     def test_shape(self):
         x, y = T.matrices('x', 'y')
-        i1 = Interval(x, y)
+        i1 = TheanoInterval(x, y)
         ex_x = A([[2, 3], [5, 6], [8, 9]])
         shp = i1.shape
         rshp = shp.eval({x: ex_x})
@@ -87,8 +85,8 @@ class IntervalTest(unittest.TestCase):
     def test_ops1(self):
         # __add__, __sub__, __mul__,
         x, y, z, w = T.matrices('x', 'y', 'z', 'w')
-        i1 = Interval(x, y)
-        i2 = Interval(z, w)
+        i1 = TheanoInterval(x, y)
+        i2 = TheanoInterval(z, w)
         l1 = A([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
         u1 = l1 * 10 + 1
         l2 = l1 * 10 + 2
@@ -130,7 +128,7 @@ class IntervalTest(unittest.TestCase):
     def test_ops2(self):
         # reciprocal, neg, exp, square
         x, y = T.matrices('x', 'y')
-        i = Interval(x, y)
+        i = TheanoInterval(x, y)
         reciprocal = i.reciprocal()
         neg = i.neg()
         exp = i.exp()
@@ -163,8 +161,8 @@ class IntervalTest(unittest.TestCase):
     def test_ops3(self):
         # __div__, __rdiv__
         l1, l2, u1, u2 = T.vectors('l1', 'l2', 'u1', 'u2')
-        i1 = Interval(l1, u1)
-        i2 = Interval(l2, u2)
+        i1 = TheanoInterval(l1, u1)
+        i2 = TheanoInterval(l2, u2)
         r1 = i1 / i2
         v1l = A([3.0, -4.0, 3.0, -4.0, -4.0, -4.0])
         v1u = A([4.0, -3.0, 4.0, -3.0, 3.0, 3.0])
@@ -206,7 +204,7 @@ class IntervalTest(unittest.TestCase):
     def test_ops4(self):
         # power
         x, y = T.vectors('x', 'y')
-        itv = Interval(x, y)
+        itv = TheanoInterval(x, y)
         v1l = A([-3, -2, -1, -2, 0.5, 0.5, 1, 2])
         v1u = A([-2, -1, -0.5, -0.5, 2, 1, 2, 3])
         v2l = A([1, 2])
@@ -288,7 +286,7 @@ class IntervalTest(unittest.TestCase):
                  0 * (-5) + 3 * 8 + 3,
                  2 * 6 + 3 * 9 + 5])
         tinpl, tinpu = T.tensor3s('inpl', 'inpu')
-        iinp = Interval(tinpl, tinpu)
+        iinp = TheanoInterval(tinpl, tinpu)
         res = iinp.flatten().dot(w)
         res += b
         d = {tinpl: inpl, tinpu: inpu}
@@ -302,8 +300,8 @@ class IntervalTest(unittest.TestCase):
         bl = A([[0, 3], [3, -4]])
         bu = A([[2, 4], [3, -3]])
         alt, aut, blt, but = T.matrices('alt', 'aut', 'blt', 'but')
-        ai = Interval(alt, aut)
-        bi = Interval(blt, but)
+        ai = TheanoInterval(alt, aut)
+        bi = TheanoInterval(blt, but)
         ci = ai.max(bi)
         d = {alt: al, aut: au, blt: bl, but: bu}
         res = ci.eval(d)
@@ -318,7 +316,7 @@ class IntervalTest(unittest.TestCase):
         al = A([[1, 2], [3, 4]])
         au = A([[2, 2], [4, 7]])
         alt, aut = T.matrices('alt', 'aut')
-        ai = Interval(alt, aut)
+        ai = TheanoInterval(alt, aut)
         ci = ai.amax(axis=1, keepdims=True)
         d = {alt: al, aut: au}
         res = ci.eval(d)
@@ -333,7 +331,7 @@ class IntervalTest(unittest.TestCase):
         tl, tu = T.matrices('l', 'u')
         xl = A([[1, 2, 3], [4, 5, 6]])
         xu = xl + 3
-        i = Interval(tl, tu)
+        i = TheanoInterval(tl, tu)
         i1 = i.reshape((1, 6))
         i2 = i.reshape((2, 3))
         i3 = i.reshape((3, 2))
@@ -356,10 +354,10 @@ class IntervalTest(unittest.TestCase):
         t2 = T.matrix('t2')
         t3 = T.tensor3('t3')
         t4 = T.tensor4('t4')
-        i1 = Interval(t1, t1)
-        i2 = Interval(t2, t2)
-        i3 = Interval(t3, t3)
-        i4 = Interval(t4, t4)
+        i1 = TheanoInterval(t1, t1)
+        i2 = TheanoInterval(t2, t2)
+        i3 = TheanoInterval(t3, t3)
+        i4 = TheanoInterval(t4, t4)
         f1 = i1.flatten()
         f2 = i2.flatten()
         f3 = i3.flatten()
@@ -397,7 +395,7 @@ class IntervalTest(unittest.TestCase):
                  [n, n]]])
         tvl, tvu = T.tensor3s('tvl', 'tvu')
         d = {tvl: vl, tvu: vu}
-        itv = Interval(tvl, tvu)
+        itv = TheanoInterval(tvl, tvu)
         res1 = itv.sum(axis=0, keepdims=False)
         res2 = itv.sum(axis=1, keepdims=False)
         res3 = itv.sum(axis=2, keepdims=False)
@@ -428,7 +426,7 @@ class IntervalTest(unittest.TestCase):
                  [9, 9]]])
         tvl, tvu = T.tensor3s('tvl', 'tvu')
         d = {tvl: vl, tvu: vu}
-        itv = Interval(tvl, tvu)
+        itv = TheanoInterval(tvl, tvu)
         res = itv.abs()
         l, u = res.eval(d)
         arae(l, A([[[2, 2], [5, 6]],
@@ -441,7 +439,7 @@ class IntervalTest(unittest.TestCase):
         vu = A([[5, 6], [7, 8]])
         tvl, tvu = T.matrices('tvl', 'tvu')
         d = {tvl: vl, tvu: vu}
-        itv = Interval(tvl, tvu)
+        itv = TheanoInterval(tvl, tvu)
         res = itv.T
         l, u = res.eval(d)
         arae(l, A([[1, 3], [2, 4]]))
@@ -450,24 +448,24 @@ class IntervalTest(unittest.TestCase):
     def test_from_shape(self):
         shp = (3, 4)
         np_shp = A([3, 4])
-        i = Interval.from_shape(shp, neutral=True)
+        i = TheanoInterval.from_shape(shp, neutral=True)
         assert_array_equal(i.shape.eval(), np_shp)
         assert_array_equal(i.lower.shape.eval(), np_shp)
         assert_array_equal(i.upper.shape.eval(), np_shp)
         l, u = i.eval()
         arae(l, np.ones(shp, dtype=theano.config.floatX) *
-             NEUTRAL_INTERVAL_LOWER)
+             TheanoInterval.NEUTRAL_LOWER)
         arae(u, np.ones(shp, dtype=theano.config.floatX) *
-             NEUTRAL_INTERVAL_UPPER)
-        i = Interval.from_shape(shp, neutral=False)
+             TheanoInterval.NEUTRAL_UPPER)
+        i = TheanoInterval.from_shape(shp, neutral=False)
         assert_array_equal(i.shape.eval(), np_shp)
         assert_array_equal(i.lower.shape.eval(), np_shp)
         assert_array_equal(i.upper.shape.eval(), np_shp)
         l, u = i.eval()
         arae(l, np.ones(shp, dtype=theano.config.floatX) *
-             DEFAULT_INTERVAL_LOWER)
+             TheanoInterval.DEFAULT_LOWER)
         arae(u, np.ones(shp, dtype=theano.config.floatX) *
-             DEFAULT_INTERVAL_UPPER)
+             TheanoInterval.DEFAULT_UPPER)
 
     def test_eval(self):
         txl, txu, tyl, tyu = T.matrices('xl', 'xu', 'yl', 'yu')
@@ -475,14 +473,14 @@ class IntervalTest(unittest.TestCase):
         xu = A([[2, 4], [6, 9]])
         yl = A([[-1, -5], [0, 3]])
         yu = A([[4, 2], [0, 3]])
-        ix = Interval(txl, txu)
-        iy = Interval(tyl, tyu)
+        ix = TheanoInterval(txl, txu)
+        iy = TheanoInterval(tyl, tyu)
         iz = ix + iy
         d = {txl: xl, txu: xu, tyl: yl, tyu: yu}
         zl, zu = iz.eval(d)
         arae(zl, xl + yl)
         arae(zu, xu + yu)
-        i2 = Interval(theano.shared(1), theano.shared(3))
+        i2 = TheanoInterval(theano.shared(1), theano.shared(3))
         i2l, i2u = i2.eval()
         assert_equal(i2l, 1)
         assert_equal(i2u, 3)
@@ -494,7 +492,7 @@ class IntervalTest(unittest.TestCase):
         inpl = A([[[-3, -1, 1]]])
         inpu = A([[[-2, 3, 2]]])
         tinpl, tinpu = T.tensor3s('tinpl', 'tinpu')
-        iinp = Interval(tinpl, tinpu)
+        iinp = TheanoInterval(tinpl, tinpu)
         res = iinp.op_relu()
         d = {tinpl: inpl, tinpu: inpu}
         rl, ru = res.eval(d)
@@ -502,8 +500,8 @@ class IntervalTest(unittest.TestCase):
         arae(ru, A([[[0, 3, 2]]]))
 
     def test_derest_output(self):
-        o1 = Interval.derest_output(1)
-        o4 = Interval.derest_output(4)
+        o1 = TheanoInterval.derest_output(1)
+        o4 = TheanoInterval.derest_output(4)
         l1, u1 = o1.eval()
         l4, u4 = o4.eval()
         arae(l1, u1)

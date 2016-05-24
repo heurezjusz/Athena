@@ -1,8 +1,53 @@
 from athenet.algorithm.numlike import NpInterval
 from unittest import TestCase, main, expectedFailure
-from random import randrange, random, randint, uniform
+from random import randrange, randint, uniform
 from itertools import product
+from numpy.testing import assert_array_almost_equal
 import numpy as np
+
+
+def _random_shape(n=None, limit=None):
+    if n is None:
+        n = randrange(1, 7)
+    result = None
+    if limit is None:
+        limit = 10 ** 4
+    size = 1
+    for i in xrange(n):
+        l = randrange(1, 10)
+        if result is None:
+            result = (l,)
+        else:
+            result += (l,)
+        size *= l
+        if size >= limit:
+            break
+    while len(result) < n:
+        result += (1,)
+    return result
+
+
+def _random_npinterval(shape=None, dim=None):
+    if shape is None:
+        shape = _random_shape(dim)
+    r1 = np.random.rand(*shape) * 20 - 10
+    r2 = np.random.rand(*shape) * 20 - 10
+    return NpInterval(np.minimum(r1, r2), np.maximum(r1, r2))
+
+
+def _rand_from_npinterval(I):
+    l = I.lower
+    u = I.upper
+    return (l + np.random.rand(*I.shape) * (u - l))
+
+
+class TestLocalFunctions(TestCase):
+    def test_rand_from(self):
+        for _ in xrange(100):
+            I = _random_npinterval()
+            r = _rand_from_npinterval(I)
+            self.assertTrue((I.lower <= r).all())
+            self.assertTrue((r <= I.upper).all())
 
 
 class TestNpInterval(TestCase):
@@ -48,14 +93,14 @@ class TestNpInterval(TestCase):
         self.assertTrue((interval.lower <= array).all())
         self.assertTrue((interval.upper >= array).all())
 
-class TestShape(TestNpInterval):
+class TestShape(TestCase):
     def _run_test(self, shape):
         i = NpInterval(np.zeros(shape), np.ones(shape))
         self.assertEquals(shape, i.shape)
 
     def test_shape(self):
         for i in xrange(100):
-            self._run_test(self._random_shape())
+            self._run_test(_random_shape())
 
 
 class TestMultiplying(TestNpInterval):
@@ -366,6 +411,685 @@ class TestGetSetitem(TestNpInterval):
         for i, j, k, l in product(xrange(n), xrange(n), xrange(n), xrange(n)):
             self.assertEquals(I[i][j][k][l].lower, i*l ^ j*k)
             self.assertEquals(I[i][j][k][l].upper, (i*j ^ l*k) + 1000)
+
+
+class TestAntiadd(TestCase):
+    def test_case(self):
+        al = np.asarray([[1, -2, -1], [-4, -5, -1]])
+        au = np.asarray([[2, -1,  1], [42, -4, 7]])
+        A = NpInterval(al, au)
+
+        bl = np.asarray([[1, 1, 4], [-1, -2, -13]])
+        bu = np.asarray([[2, 2, 5], [-1, -1,   1]])
+        B = NpInterval(bl, bu)
+
+        R = (A + B).antiadd(B)
+        self.assertTrue((A.lower == R.lower).all())
+        self.assertTrue((A.upper == R.upper).all())
+        R = (A + B).antiadd(A)
+        self.assertTrue((B.lower == R.lower).all())
+        self.assertTrue((B.upper == R.upper).all())
+
+    def test_correct(self):
+        for _ in xrange(100):
+            l = [randrange(-10, 10) for j in xrange(4)]
+            A = NpInterval(np.asarray([l[0]]), np.asarray([l[1]]))
+            B = NpInterval(np.asarray([l[2]]), np.asarray([l[3]]))
+
+            if A.lower[0] > A.upper[0]:
+                A.lower, A.upper = A.upper, A.lower
+            if B.lower[0] > B.upper[0]:
+                B.lower, B.upper = B.upper, B.lower
+
+            R = (A + B).antiadd(B)
+            self.assertTrue((A.lower == R.lower).all())
+            self.assertTrue((A.upper == R.upper).all())
+            R = (A + B).antiadd(A)
+            self.assertTrue((B.lower == R.lower).all())
+            self.assertTrue((B.upper == R.upper).all())
+
+    def test_shape(self):
+        for i in xrange(100):
+            shape = _random_shape()
+            A = NpInterval(np.ones(shape), 100 * np.ones(shape))
+            B = NpInterval(np.ones(shape) * 2, np.ones(shape) * 3)
+            R = A.antiadd(B)
+            self.assertEqual(R.shape, shape)
+
+
+class TestDNorm(TestCase):
+
+    def foo(self, x, c, a, b):
+        return (a * (1 - 2 * b) * x ** 2 + c) / (a * x ** 2 + c) ** (b + 1)
+
+    def foo2(self, x, y, c, a, b):
+        return -2 * a * b * x * y * ((a * (x ** 2 + y ** 2) + c) ** (-b-1))
+
+    def test_case0(self):
+        a = 1.
+        b = 0.75
+        k = 1.
+        # local range = 1
+        act = np.asarray([[[[2.]], [[3.]], [[5.]]]])
+        der = np.asarray([[[[1.]], [[1.]], [[1.]]]])
+        activation = NpInterval(act, 1 * act)
+        derivative = NpInterval(-der, der)
+
+        res = self._count_norm(act, der, k, a, b, 1)
+        R = derivative.op_d_norm(activation, act.shape, 1, k, a, b)
+        self.assertTrue(np.isclose(abs(res), R.upper).all())
+        self.assertTrue(np.isclose(-abs(res), R.lower).all())
+
+        # local range = 5
+        derivative = NpInterval(1 * der, 1 * der)
+
+        c = k
+        for i in xrange(3):
+            c += act[0][i][0][0]**2
+        res = np.zeros(act.shape)
+        for i, j in product(xrange(3), xrange(3)):
+            x = act[0][i][0][0]
+            y = act[0][j][0][0]
+            if i == j:
+                res[:, i, ::] += self.foo(x, c - x ** 2, a, b)
+            else:
+                res[:, j, ::] += self.foo2(x, y, c - x**2 - y**2, a, b)
+
+        res2 = self._count_norm(act, der, k, a, b, 5)
+        R = derivative.op_d_norm(activation, act.shape, 5, k, a, b)
+        self.assertTrue(np.isclose(res, res2).all())
+        self.assertTrue(np.isclose(res, R.upper).all())
+        self.assertTrue(np.isclose(res, R.lower).all())
+
+    def test_case1(self):
+        a = 1.
+        b = 0.75
+        k = 1.
+        act = np.asarray([[[[2.]], [[3.]], [[5.]]]])
+        der = np.asarray([[[[1.]], [[1.]], [[1.]]]])
+        activation = NpInterval(act, 1 * act)
+        derivative = NpInterval(-der, der)
+
+        def foo(x, c):
+            return (a * (1 - 2 * b) * x ** 2 + c) / (a * x ** 2 + c) ** (b + 1)
+
+        def foo2(x, y, c):
+            return -2 * a * b * x * y * (
+                (a * (x ** 2 + y ** 2) + c) ** (-b - 1))
+
+        c = k
+        for i in xrange(3):
+            c += act[0][i][0][0] ** 2
+        res = np.zeros(act.shape)
+
+        for i, j in product(xrange(3), xrange(3)):
+            x = act[0][i][0][0]
+            y = act[0][j][0][0]
+            if i == j:
+                res[:, i, ::] += foo(x, c - x ** 2)
+            else:
+                res[:, i, ::] += foo2(x, y, c - x ** 2 - y ** 2)
+
+        R = derivative.op_d_norm(activation, act.shape, 5, k, a, b)
+        self.assertTrue((R.lower <= -abs(res)).all())
+        self.assertTrue((abs(res) <= R.upper).all())
+
+    def test_case2(self):
+        a = 4.
+        b = 3
+        k = 0.8
+        # local range = 1
+        act = np.asarray([[[[2.]], [[3.]], [[5.]]]])
+        der = np.asarray([[[[1.]], [[1.]], [[1.]]]])
+        activation = NpInterval(act, 1 * act)
+        derivative = NpInterval(-der, der)
+
+        res = self.foo(act, k, a, b)
+        R = derivative.op_d_norm(activation, act.shape, 1, k, a, b)
+
+        self.assertTrue(np.isclose(-res, R.upper).all())
+        self.assertTrue(np.isclose(res, R.lower).all())
+
+        # local range = 5
+        derivative = NpInterval(1 * der, 1 * der)
+
+        c = k
+        for i in xrange(3):
+            c += act[0][i][0][0] ** 2
+        res = np.zeros(act.shape)
+
+        for i, j in product(xrange(3), xrange(3)):
+            x = act[0][i][0][0]
+            y = act[0][j][0][0]
+            if i == j:
+                res[:, i, ::] += self.foo(x, c - x ** 2, a, b)
+            else:
+                res[:, j, ::] += self.foo2(x, y, c - x ** 2 - y ** 2, a, b)
+
+        res2 = self._count_norm(act, der, k, a, b, 5)
+        R = derivative.op_d_norm(activation, act.shape, 5, k, a, b)
+        self.assertTrue(np.isclose(res, res2).all())
+        self.assertTrue(np.isclose(res, R.upper).all())
+        self.assertTrue(np.isclose(res, R.lower).all())
+
+    def test_case3(self):
+        a = 1.
+        b = 0.75
+        k = 1.
+        # local range = 1
+        act = np.asarray([[[[2.]], [[3.]], [[5.]]]])
+        der = np.asarray([[[[-3.]], [[2.]], [[7.]]]])
+        activation = NpInterval(act, 1 * act)
+        derivative = NpInterval(der, 1 * der)
+
+        res = self._count_norm(act, der, k, a, b, 1)
+        R = derivative.op_d_norm(activation, act.shape, 1, k, a, b)
+        self.assertTrue(np.isclose(res, R.upper).all())
+        self.assertTrue(np.isclose(res, R.lower).all())
+
+        # local range = 5
+        derivative = NpInterval(1 * der, 1 * der)
+
+        c = k
+        for i in xrange(3):
+            c += act[0][i][0][0] ** 2
+        res = np.zeros(act.shape)
+        for i, j in product(xrange(3), xrange(3)):
+            x = act[0][i][0][0]
+            y = act[0][j][0][0]
+            if i == j:
+                res[:, i, ::] += self.foo(x, c - x ** 2, a, b) * der[:, i, ::]
+            else:
+                res[:, j, ::] += \
+                    self.foo2(x, y, c - x ** 2 - y ** 2, a, b) * der[:, i, ::]
+
+        res2 = self._count_norm(act, der, k, a, b, 5)
+        R = derivative.op_d_norm(activation, act.shape, 5, k, a, b)
+        self.assertTrue(np.isclose(res, res2).all())
+        self.assertTrue(np.isclose(res, R.upper).all())
+        self.assertTrue(np.isclose(res, R.lower).all())
+
+    def _count_norm(self, act, der, k, alpha, beta, local_range):
+        res = np.zeros_like(act)
+        b, ch, h, w = der.shape
+        local_range /= 2
+        for at_b, at_ch, at_h, at_w in product(xrange(b), xrange(ch),
+                                               xrange(h), xrange(w)):
+            c = k
+            y = act[at_b, at_ch, at_h, at_w]
+            for i in xrange(-local_range, local_range + 1):
+                if i != 0 and 0 <= (at_ch + i) < ch:
+                    c += act[at_b, at_ch + i, at_h, at_w]**2
+
+            res[at_b, at_ch, at_h, at_w] += \
+                self.foo(y, c, alpha, beta) * der[at_b, at_ch, at_h, at_w]
+
+            for i in xrange(-local_range, local_range + 1):
+                if i != 0 and 0 <= at_ch + i < ch:
+                    x = act[at_b, at_ch + i, at_h, at_w]
+                    c -= x**2
+                    res[at_b, at_ch + i, at_h, at_w] += \
+                        self.foo2(x, y, c, alpha, beta) * der[at_b, at_ch,
+                                                              at_h, at_w]
+                    c += x**2
+        return res
+
+    def test_correct(self):
+        for _ in xrange(100):
+            s = randrange(1, 10)
+            shape = (1, s, 1, 1)
+            local_range = randrange(1, 3) * 2 + 1
+            k = uniform(1, 10)
+            a = uniform(1, 10)
+            b = uniform(0.75, 3)
+            activations = _random_npinterval(shape)
+            derivatives = _random_npinterval(shape)
+            R = derivatives.op_d_norm(activations, shape, local_range,
+                                      k, a, b)
+            for _ in xrange(100):
+                act = _rand_from_npinterval(activations)
+                der = _rand_from_npinterval(derivatives)
+                res = self._count_norm(act, der, k, a, b, local_range)
+                self.assertTrue((R.lower <= res).all())
+                self.assertTrue((res <= R.upper).all())
+
+    def test_correct_flat(self):
+        for _ in xrange(100):
+            s = randrange(1, 10)
+            shape = (1, s, 1, 1)
+            local_range = randrange(1, 3) * 2 + 1
+            k = uniform(1, 10)
+            a = uniform(1, 10)
+            b = uniform(0.75, 3)
+            activations = _random_npinterval(shape)
+            activations.lower = activations.upper * 1
+            derivatives = _random_npinterval(shape)
+            derivatives.lower = derivatives.upper * 1
+            R = derivatives.op_d_norm(activations, shape, local_range,
+                                      k, a, b)
+            act = _rand_from_npinterval(activations)
+            der = _rand_from_npinterval(derivatives)
+            res = self._count_norm(act, der, k, a, b, local_range)
+
+            self.assertTrue(np.isclose(R.lower, res).all())
+            self.assertTrue(np.isclose(res, R.upper).all())
+
+    def test_shape(self):
+        for _ in xrange(20):
+            shape = _random_shape(4, limit=100)
+            local_range = randrange(0, 3)
+            k = uniform(0.1, 10)
+            a = uniform(0.1, 10)
+            b = uniform(0.75, 3)
+
+            A = _random_npinterval(shape)
+            D = _random_npinterval(shape)
+            R = D.op_d_norm(A, shape, local_range, k, a, b)
+            self.assertEquals(A.shape, R.shape)
+
+
+class ReluDerivativeTest(TestCase):
+
+    def test_case1(self):
+        shp = (4, 3, 2)
+        act = np.zeros(shp)
+        for n_in in range(4):
+            for h in range(3):
+                for w in range(2):
+                    act[n_in, h, w] += 100 * n_in + 10 * h + w
+        iact = NpInterval(act, 1 * act)
+        idout = NpInterval(np.ones(shp), np.ones(shp))
+        idin = idout.op_d_relu(iact)
+        l, u = idin.lower, idin.upper
+
+        self.assertAlmostEquals(l[0, 0, 0], 0.0)
+        self.assertAlmostEquals(u[0, 0, 0], 0.0)
+        self.assertAlmostEquals(l[2, 1, 1], 1.0)
+        self.assertAlmostEquals(l[2, 2, 1], 1.0)
+        self.assertAlmostEquals(l[1, 0, 1], 1.0)
+        self.assertAlmostEquals(l[2, 1, 1], 1.0)
+        self.assertAlmostEquals(l[2, 2, 0], 1.0)
+        self.assertAlmostEquals(l[1, 0, 1], 1.0)
+
+    def test_case2(self):
+        actl = np.asarray([-2, -1, -1, 0, 0, 1])
+        actu = np.asarray([-1, 1, 0, 0, 1, 2])
+        doutl = np.asarray([2, 3, 4, 7, 11, 13])
+        doutu = np.asarray([3, 5, 7, 11, 13, 17])
+        iact = NpInterval(actl, actu)
+        idout = NpInterval(doutl, doutu)
+        idin = idout.op_d_relu(iact)
+        l, u = idin.lower, idin.upper
+        rl = np.asarray([0, 0, 0, 0, 11, 13])
+        ru = np.asarray([0, 5, 0, 0, 13, 17])
+
+        self.assertTrue((l == rl).all())
+        self.assertTrue((u == ru).all())
+
+    def test_case3(self):
+        actl = np.asarray([-2, -1, -1, 0, 0, 1])
+        actu = np.asarray([-1, 1, 0, 0, 1, 2])
+        doutl = np.asarray([-3, -5, -7, -11, -13, -17])
+        doutu = np.asarray([-2, -3, -5, -7, -11, -13])
+        iact = NpInterval(actl, actu)
+        idout = NpInterval(doutl, doutu)
+        idin = idout.op_d_relu(iact)
+        l, u = idin.lower, idin.upper
+        rl = np.asarray([0, -5, 0, 0, -13, -17])
+        ru = np.asarray([0, 0, 0, 0, -11, -13])
+
+        self.assertTrue((l == rl).all())
+        self.assertTrue((u == ru).all())
+
+
+class ConvDerivativeTest(TestCase):
+    def test_case1(self):
+        input_shape = (1, 1, 3, 5)
+        derivatives = np.asarray([1, -1]).reshape((1, 1, 1, 2))
+        D = NpInterval(derivatives, 1 * derivatives)
+        filter_shape = (1, 3, 3)
+        filter = np.asarray([[1, 2, 4], [-1, -2, -4], [0, 0, 0]]).reshape(
+            (1, 1, 3, 3))
+        A = D.op_d_conv(input_shape, filter_shape, filter, (1, 2), (0, 0), 1)
+
+        result = np.asarray([[[[0., 0., 0., 0., 0.],
+                               [-4., -2., 3., 2., 1.],
+                               [4., 2., -3., -2., -1.]]]])
+        self.assertEquals(A.shape, result.shape)
+        self.assertTrue((A.upper == result).all())
+        self.assertTrue((A.lower == result).all())
+
+    def test_case2(self):
+        input_shape = (1, 1, 3, 5)
+        derivatives = np.asarray([[1, 0], [0, -1], [1, -1]]).\
+            reshape((1, 1, 3, 2))
+        D = NpInterval(derivatives, 1 * derivatives)
+        filter_shape = (1, 1, 3)
+        filter = np.asarray([1, 2, 4]).reshape((1, 1, 1, 3))
+        A = D.op_d_conv(input_shape, filter_shape, filter, (1, 2), (0, 0), 1)
+
+        result = np.asarray([[[[4., 2., 1., 0., 0.],
+                               [0., 0., -4., -2., -1.],
+                               [4., 2., -3., -2., -1.]]]])
+        self.assertEquals(A.shape, result.shape)
+        self.assertTrue((A.upper == result).all())
+        self.assertTrue((A.lower == result).all())
+
+    def test_dims(self):
+        derivarives = np.ones((1, 2, 2, 4))
+        D = NpInterval(derivarives, 1 * derivarives)
+        w = np.ones((2, 1, 3, 4))
+        w = w[:, :, ::-1, ::-1]
+        R = D.op_d_conv((1, 1, 4, 7), (2, 3, 4), w, stride=(1, 1),
+                        padding=(0, 0), n_groups=1)
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, u)
+        assert_array_almost_equal(l, np.asarray(
+            [[[[2, 4, 6, 8, 6, 4, 2], [4, 8, 12, 16, 12, 8, 4],
+               [4, 8, 12, 16, 12, 8, 4], [2, 4, 6, 8, 6, 4, 2]]]]))
+
+    def test_2x2_float(self):
+        derivatives = np.asarray([[[[4, 8], [2, 3]]]])
+        D = NpInterval(derivatives, 1 * derivatives)
+        w = np.asarray([[[[2, 3, 0], [5, 7, 0], [0, 0, 0]]]])
+        w = w[:, :, ::-1, ::-1]
+        R = D.op_d_conv((1, 1, 2, 2), (1, 3, 3), w, padding=(1, 1),
+                        stride=(1, 1), n_groups=1)
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, u)
+        assert_array_almost_equal(l, np.asarray([[[[80, 65], [29, 21]]]]))
+
+    def test_all_dims(self):
+        derivatives = np.asarray([[[[2, 3], [5, 7]],
+                                   [[0.2, 0.3], [0.5, 0.7]]]])
+        D = NpInterval(derivatives, 1 * derivatives)
+        w = np.asarray([[[[1, 0, 2], [0, 4, 0], [3, 0, 0]],
+                         [[0, 0, 0], [0, 9, 10], [0, 11, 12]]],
+                        [[[5, 0, 6], [0, 0, 0], [7, 0, 8]],
+                         [[13, 15, 0], [0, 0, 0], [14, 16, 0]]]])
+        w = w[:, :, ::-1, ::-1]
+        R = D.op_d_conv((1, 2, 2, 2), (2, 3, 3), w, padding=(1, 1),
+                        stride=(1, 1), n_groups=1)
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, u)
+        assert_array_almost_equal(l, np.asarray([[[[18.5, 25], [31.1, 29.6]],
+                                                  [[34.6, 57.5],
+                                                   [74.4, 174.8]]]]))
+
+    def test_interval_behavior(self):
+        derivatives = np.asarray([1, 1]).reshape(1, 1, 1, 2)
+        w = np.asarray([[1, -10, 3], [-2, 5, 6]]).reshape((1, 1, 2, 3))
+        stride = (1, 2)
+        image_size = (1, 1, 2, 5)
+        filter_shape = (1, 2, 3)
+        D = NpInterval(1 * derivatives, derivatives)
+        R = D.op_d_conv(image_size, filter_shape, w, stride, (0, 0), 1)
+        res = np.asarray([[[[6., 5., 4., 5., -2.],
+                            [3., -10., 4., -10., 1.]]]])
+        assert_array_almost_equal(res, R.lower)
+        assert_array_almost_equal(res, R.upper)
+
+        D = NpInterval(-derivatives, derivatives)
+        R = D.op_d_conv(image_size, filter_shape, w, stride, (0, 0), 1)
+        res = np.asarray([[[[6., 5., 8., 5., 2.],
+                            [3., 10., 4., 10., 1.]]]])
+        assert_array_almost_equal(-res, R.lower)
+        assert_array_almost_equal(res, R.upper)
+
+    def test_correct(self):
+        input_shape = (2, 3, 3, 5)
+        w_shape = (1, 3, 2, 2)
+        filter_shape = (1, 2, 2)
+        der_shape = (2, 1, 4, 6)
+        stride = (1, 1)
+        padding = (1, 1)
+
+        for _ in xrange(10):
+            D = _random_npinterval(der_shape)
+            w = np.random.rand(*w_shape)
+            R = D.op_d_conv(input_shape, filter_shape, w, stride, padding, 1)
+            for i in xrange(100):
+                der_val = _rand_from_npinterval(D)
+                d = NpInterval(der_val, 1 * der_val)
+                r = d.op_d_conv(input_shape, filter_shape, w, stride,
+                                padding, 1)
+                self.assertTrue((R.lower <= r.lower).all())
+                self.assertTrue((R.upper >= r.upper).all())
+
+
+class AvgPoolDerivativeTest(TestCase):
+
+    def test_simple(self):
+        inp_l = np.asarray([[[[0, 0, 0], [0, 0, 0], [0, 0, 0]]]])
+        inp_u = np.asarray([[[[1, 1, 1], [1, 1, 1], [1, 1, 1]]]])
+        I = NpInterval(inp_l, inp_u)
+        der_l = np.asarray([[[[-1, -2], [-3, -4]]]])
+        der_u = np.asarray([[[[5, 4], [3, 2]]]])
+        D = NpInterval(der_l, der_u)
+        shp = (1, 1, 3, 3)
+        R = D.op_d_avg_pool(I, shp, poolsize=(2, 2), stride=(1, 1),
+                            padding=(0, 0))
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, np.asarray([[[[-1, -3, -2],
+                                                   [-4, -10, -6],
+                                                   [-3, -7, -4]]]]) / 4.0)
+        assert_array_almost_equal(u, np.asarray([[[[5, 9, 4],
+                                                   [8, 14, 6],
+                                                   [3, 5, 2]]]]) / 4.0)
+
+    def test_channels_batch(self):
+        inp_l = np.asarray([[[[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+                            [[0, 0, 0], [0, 0, 0], [3, 0, 0]]],
+                           [[[0, 3, 3], [4, 5, 6], [7, 8, 4]],
+                            [[-3, -3, -3], [-3, -3, -3], [3, 3, 3]]]])
+
+        inp_u = np.asarray([[[[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+                            [[1, 1, 1], [1, 1, 1], [4, 1, 1]]],
+                           [[[2, 4, 4], [9, 9, 9], [9, 9, 9]],
+                            [[2, 2, 2], [2, 2, 2], [5, 5, 5]]]])
+
+        I = NpInterval(inp_l, inp_u)
+
+        der_l = np.asarray([[[[-1, -2], [-3, -4]],
+                             [[1, 2], [-3, -2]]],
+                            [[[1, 2], [-3, -2]],
+                             [[-1, 1], [-1, 1]]]])
+
+        der_u = np.asarray([[[[5, 4], [3, 2]],
+                             [[4, 4], [4, 4]]],
+                            [[[4, 5], [0, 1]],
+                             [[0, 2], [0, 2]]]])
+
+        D = NpInterval(der_l, der_u)
+        shp = (2, 2, 3, 3)
+
+        R = D.op_d_avg_pool(I, shp, poolsize=(2, 2), stride=(1, 1),
+                            padding=(0, 0))
+        l, u = R.lower, R.upper
+
+        assert_array_almost_equal(l, np.asarray([[[[-1, -3, -2], [-4, -10, -6],
+                                                   [-3, -7, -4]],
+                                                  [[1, 3, 2], [-2, -2, 0],
+                                                   [-3, -5, -2]]],
+                                                 [[[1, 3, 2], [-2, -2, 0],
+                                                   [-3, -5, -2]],
+                                                  [[-1, 0, 1], [-2, 0, 2],
+                                                   [-1, 0, 1]]]]) / 4.0)
+        assert_array_almost_equal(u, np.asarray([[[[5, 9, 4], [8, 14, 6],
+                                                   [3, 5, 2]],
+                                                  [[4, 8, 4], [8, 16, 8],
+                                                   [4, 8, 4]]],
+                                                 [[[4, 9, 5], [4, 10, 6],
+                                                   [0, 1, 1]],
+                                                  [[0, 2, 2], [0, 4, 4],
+                                                   [0, 2, 2]]]]) / 4.0)
+
+    def test_stride(self):
+        inp_l = np.arange(25).reshape((1, 1, 5, 5))
+        inp_u = np.arange(25).reshape((1, 1, 5, 5)) + 2
+        I = NpInterval(inp_l, inp_u)
+        derivatives = np.asarray([[[[-1, 2], [-3, 4]]]])
+        D = NpInterval(derivatives, 1 * derivatives)
+        shp = (1, 1, 5, 5)
+        R = D.op_d_avg_pool(I, shp, poolsize=(2, 2), stride=(3, 3),
+                            padding=(0, 0))
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, np.asarray([[[[-1, -1, 0, 2, 2],
+                                                   [-1, -1, 0, 2, 2],
+                                                   [0, 0, 0, 0, 0],
+                                                   [-3, -3, 0, 4, 4],
+                                                   [-3, -3, 0, 4, 4]]]]) / 4.0)
+        assert_array_almost_equal(u, np.asarray([[[[-1, -1, 0, 2, 2],
+                                                   [-1, -1, 0, 2, 2],
+                                                   [0, 0, 0, 0, 0],
+                                                   [-3, -3, 0, 4, 4],
+                                                   [-3, -3, 0, 4, 4]]]]) / 4.0)
+
+    def test_padding(self):
+        inp_l = np.asarray([[[[0, 0, 0], [0, 0, 0], [0, 0, 0]]]])
+        inp_u = np.asarray([[[[1, 1, 1], [1, 1, 1], [1, 1, 1]]]])
+        I = NpInterval(inp_l, inp_u)
+        der_l = np.asarray([[[[-1, -2], [-3, -4]]]])
+        der_u = np.asarray([[[[5, 4], [3, 2]]]])
+        D = NpInterval(der_l, der_u)
+        shp = (1, 1, 3, 3)
+
+        R = D.op_d_avg_pool(I, shp, poolsize=(2, 2), padding=(1, 1),
+                            stride=(3, 3))
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, np.asarray([[[[-1, 0, -2], [0, 0, 0],
+                                                   [-3, 0, -4]]]]) / 4.0)
+        assert_array_almost_equal(u, np.asarray([[[[5, 0, 4], [0, 0, 0],
+                                                   [3, 0, 2]]]]) / 4.0)
+
+
+class MaxPoolDerivativeTest(TestCase):
+
+    def test_simple(self):
+        inp_l = np.asarray([[[[1, 1], [1, 1]]]])
+        inp_u = np.asarray([[[[2, 2], [2, 2]]]])
+        I = NpInterval(inp_l, inp_u)
+        derivatives = np.asarray([[[[5]]]])
+        D = NpInterval(derivatives, 1 * derivatives)
+        shp = (1, 1, 2, 2)
+
+        R = D.op_d_max_pool(I, shp, poolsize=(2, 2), stride=(1, 1),
+                            padding=(0, 0))
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, np.asarray([[[[0, 0], [0, 0]]]]))
+        assert_array_almost_equal(u, np.asarray([[[[5, 5], [5, 5]]]]))
+
+    def test_neg_output(self):
+        inp_l = np.asarray([[[[1, 1], [1, 1]]]])
+        inp_u = np.asarray([[[[2, 2], [2, 2]]]])
+        I = NpInterval(inp_l, inp_u)
+        derivative = np.asarray([[[[-3]]]])
+        D = NpInterval(derivative, 1 * derivative)
+        shp = (1, 1, 2, 2)
+
+        R = D.op_d_max_pool(I, shp, poolsize=(2, 2), stride=(1, 1),
+                            padding=(0, 0))
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, np.asarray([[[[-3, -3], [-3, -3]]]]))
+        assert_array_almost_equal(u, np.asarray([[[[0, 0], [0, 0]]]]))
+
+    def test_2D(self):
+        inp_l = np.asarray([[[[0, 0, 0], [0, 0, 0], [0, 0, 0]]]])
+        inp_u = np.asarray([[[[1, 1, 1], [1, 1, 1], [1, 1, 1]]]])
+        I = NpInterval(inp_l, inp_u)
+        der_l = np.asarray([[[[-1, -2], [-3, -4]]]])
+        der_u = np.asarray([[[[5, 4], [3, 2]]]])
+        D = NpInterval(der_l, der_u)
+        shp = (1, 1, 3, 3)
+
+        R = D.op_d_max_pool(I, shp, poolsize=(2, 2), stride=(1, 1),
+                            padding=(0, 0))
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, np.asarray([[[[-1, -3, -2], [-4, -10, -6],
+                                                   [-3, -7, -4]]]]))
+        assert_array_almost_equal(u, np.asarray([[[[5, 9, 4], [8, 14, 6],
+                                                   [3, 5, 2]]]]))
+
+    def test_channels_batch(self):
+        inp_l = np.asarray([[[[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+                             [[0, 0, 0], [0, 0, 0], [3, 0, 0]]],
+                            [[[0, 3, 3], [4, 5, 6], [7, 8, 4]],
+                             [[-3, -3, -3], [-3, -3, -3], [3, 3, 3]]]])
+        inp_u = np.asarray([[[[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+                             [[1, 1, 1], [1, 1, 1], [4, 1, 1]]],
+                            [[[2, 4, 4], [9, 9, 9], [9, 9, 9]],
+                             [[2, 2, 2], [2, 2, 2], [5, 5, 5]]]])
+        I = NpInterval(inp_l, inp_u)
+
+        der_l = np.asarray([[[[-1, -2], [-3, -4]],
+                             [[1, 2], [-3, -2]]],
+                            [[[1, 2], [-3, -2]],
+                             [[-1, 1], [-1, 1]]]])
+        der_u = np.asarray([[[[5, 4], [3, 2]],
+                             [[4, 4], [4, 4]]],
+                            [[[4, 5], [0, 1]],
+                             [[0, 2], [0, 2]]]])
+        D = NpInterval(der_l, der_u)
+        shp = (2, 2, 3, 3)
+
+        R = D.op_d_max_pool(I, shp, poolsize=(2, 2), stride=(1, 1),
+                            padding=(0, 0))
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, np.asarray([[[[-1, -3, -2], [-4, -10, -6],
+                                                   [-3, -7, -4]],
+                                                  [[0, 0, 0], [0, -2, -2],
+                                                   [-3, -2, -2]]],
+                                                 [[[0, 0, 0], [-3, -5, -2],
+                                                   [-3, -5, -2]],
+                                                  [[-1, -1, 0], [-1, -1, 0],
+                                                   [-1, -1, 0]]]]))
+        assert_array_almost_equal(u, np.asarray([[[[5, 9, 4], [8, 14, 6],
+                                                   [3, 5, 2]],
+                                                  [[4, 8, 4], [4, 12, 8],
+                                                   [4, 4, 4]]],
+                                                 [[[0, 0, 0], [4, 10, 6],
+                                                   [0, 1, 1]],
+                                                  [[0, 2, 2], [0, 2, 2],
+                                                   [0, 2, 2]]]]))
+
+    def test_stride(self):
+        tinp_l = np.arange(25).reshape((1, 1, 5, 5))
+        tinp_u = np.arange(25).reshape((1, 1, 5, 5)) + 2
+        I = NpInterval(tinp_l, tinp_u)
+        derivative = np.asarray([[[[-1, 2], [-3, 4]]]])
+        D = NpInterval(derivative, 1 * derivative)
+        shp = (1, 1, 5, 5)
+
+        R = D.op_d_max_pool(I, shp, poolsize=(2, 2), stride=(3, 3),
+                            padding=(0, 0))
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, np.asarray([[[[0, 0, 0, 0, 0],
+                                                   [-1, -1, 0, 0, 0],
+                                                   [0, 0, 0, 0, 0],
+                                                   [0, 0, 0, 0, 0],
+                                                   [-3, -3, 0, 0, 0]]]]))
+        assert_array_almost_equal(u, np.asarray([[[[0, 0, 0, 0, 0],
+                                                   [0, 0, 0, 2, 2],
+                                                   [0, 0, 0, 0, 0],
+                                                   [0, 0, 0, 0, 0],
+                                                   [0, 0, 0, 4, 4]]]]))
+
+    def test_padRg(self):
+        inp_l = np.asarray([[[[0, 0, 0], [0, 0, 0], [0, 0, 0]]]])
+        inp_u = np.asarray([[[[1, 1, 1], [1, 1, 1], [1, 1, 1]]]])
+        I = NpInterval(inp_l, inp_u)
+        der_l = np.asarray([[[[-1, -2], [-3, -4]]]])
+        der_u = np.asarray([[[[5, 4], [3, 2]]]])
+        D = NpInterval(der_l, der_u)
+        shp = (1, 1, 3, 3)
+
+        R = D.op_d_max_pool(I, shp, poolsize=(2, 2), padding=(1, 1),
+                            stride=(3, 3))
+        l, u = R.lower, R.upper
+        assert_array_almost_equal(l, np.asarray([[[[-1, 0, -2], [0, 0, 0],
+                                                   [-3, 0, -4]]]]))
+        assert_array_almost_equal(u, np.asarray([[[[5, 0, 4], [0, 0, 0],
+                                                   [3, 0, 2]]]]))
 
 
 class TestDiv(TestNpInterval):

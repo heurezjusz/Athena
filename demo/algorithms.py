@@ -28,8 +28,9 @@ parser.add_argument("-a", "--algorithm",
                          " * sender2: simple_neuron_deleter2\n"
                          " * rat: sparsify_smallest_on_network\n"
                          " * rat2: sparsify_smallest_on_layers\n"
-                         " * filters: sharpen_filters",
-                    choices=["sender", "sender2", "rat", "rat2", "filters"],
+                         " * filters: sharpen_filters\n"
+                         " * derest: derest",
+                    choices=["sender", "sender2", "rat", "rat2", "filters", "derest"],
                     default="sender")
 
 parser.add_argument("-n", "--network",
@@ -58,7 +59,8 @@ parser.add_argument("-d", "--dataset", type=int,
                          " * simple_neuron_deleter2 (sender2): 5\n"
                          " * sparsify_smallest_on_network (rat): 5\n"
                          " * sparsify_smallest_on_layers (rat2): 4\n"
-                         " * sharpen_filters (filters): 3\n",
+                         " * sharpen_filters (filters): 3\n"
+                         " * derest: 3\n",
                     default=0)
 
 parser.add_argument("-f", "--file", type=str,
