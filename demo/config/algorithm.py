@@ -2,8 +2,14 @@
 from athenet.algorithm import sparsify_smallest_on_network, sharpen_filters, \
     sparsify_smallest_on_layers, simple_neuron_deleter,\
     simple_neuron_deleter2, derest
+from athenet.algorithm import simple_neuron_deleter, simple_neuron_deleter2
+from athenet.algorithm import get_filters_indicators, get_smallest_indicators,\
+    get_nearest_to_global_mean_indicators, \
+    get_nearest_to_layers_mean_indicators, delete_weights_by_global_fraction,\
+    delete_weights_by_layer_fractions
 from athenet.models import lenet, alexnet, googlenet
 from athenet.data_loader import MNISTDataLoader, ImageNetDataLoader
+from athenet.layers import FullyConnectedLayer
 
 
 """
@@ -56,7 +62,7 @@ datasets = {
                  (0.35, 0.5), (0.375, 0.5), (0.4, 0.5), (0.45, 0.5),
                  (0.5, 0.5), (0.55, 0.5), (0.6, 0.5), (0.7, 0.5), (0.8, 0.5),
                  (0.9, 0.5)],
-                 [(x / 100., 1.) for x in xrange(1, 21)]],
+                [(x / 100., 1.) for x in xrange(1, 21)]],
     "rat":     [[0.5],
                 [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
                 [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
@@ -94,6 +100,39 @@ algorithms = {
     "filters": sharpen_filters,
     "derest": derest
     }
+
+
+indicators = {
+    "smallest": get_smallest_indicators,
+    "global_mean": get_nearest_to_global_mean_indicators,
+    "layers_mean": get_nearest_to_layers_mean_indicators,
+    "filters": get_filters_indicators
+}
+
+default_types_of_layers = {
+    "smallest": "all",
+    "global_mean": "all",
+    "layers_mean": "all",
+    "filters": "conv"
+}
+
+deleting = {
+    "global": delete_weights_by_global_fraction,
+    "layers": delete_weights_by_layer_fractions
+}
+
+
+def get_layers(network, type_, indicators_):
+    if type_ == "default":
+        return get_layers(network, default_types_of_layers[indicators_],
+                          indicators_)
+    if type_ == "all":
+        return network.weighted_layers
+    if type_ == "conv":
+        return network.convolutional_layers
+    if type_ == "fully-connected":
+        return [layer for layer in network.weighted_layers
+                if isinstance(layer, FullyConnectedLayer)]
 
 
 def get_network(network_type):

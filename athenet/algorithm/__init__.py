@@ -7,3 +7,5 @@ from sparsify_smallest import sparsify_nearest_to_layer_mean,\
     get_nearest_to_layers_mean_indicators
 from sharpen_filters import sharpen_filters, get_filters_indicators
 from derest import *
+from deleting import delete_weights_by_layer_fractions,\
+    delete_weights_by_global_fraction

@@ -57,7 +57,7 @@ def _get_filters_indicators_in_layer_with_filters(layer,
     return numpy.array([filter_indicator(filter_3d) for filter_3d in layer.W])
 
 
-def get_filters_indicators(layers, bilateral_filter_args):
+def get_filters_indicators(layers, bilateral_filter_args=(5, 75, 75)):
     """
     Returns indicators of being a noise for layers.
 
