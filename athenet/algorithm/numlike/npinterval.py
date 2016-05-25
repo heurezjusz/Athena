@@ -7,7 +7,6 @@ This module contains NpInterval class and auxiliary objects.
 from athenet.algorithm.numlike import Numlike
 from itertools import product
 import numpy as np
-import math
 
 NEUTRAL_INTERVAL_LOWER = 0.0
 NEUTRAL_INTERVAL_UPPER = 0.0
@@ -563,10 +562,10 @@ class NpInterval(Numlike):
 
             possibilities_c0 = [(0., c) for c in [c_low, c_up]]
             possibilities_c1 = [
-                (-math.sqrt(3 * c) / math.sqrt(alpha * (2 * beta - 1)), c)
+                (-(3 * c)**0.5 / (alpha * (2 * beta - 1))**0.5, c)
                 for c in [c_low, c_up]]
             possibilities_c2 = [
-                (math.sqrt(3 * c) / math.sqrt(alpha * (2 * beta - 1)), c)
+                ((3 * c)**0.5 / (alpha * (2 * beta - 1))**0.5, c)
                 for c in [c_low, c_up]]
 
             return [(x, c) for x, c in possibilities_c0 + possibilities_c1
@@ -615,9 +614,9 @@ class NpInterval(Numlike):
             # a*y**2=a(2*b+1)*x**2-c
             a = alpha
             b = beta
-            sqrt1 = [(math.sqrt((c + a * y ** 2) / (a * (2 * b + 1))), y, c)
+            sqrt1 = [(((c + a * y ** 2) / (a * (2 * b + 1)))**0.5, y, c)
                      for y, c in product([y_low, y_up], [c_low, c_up])]
-            sqrt2 = [(-math.sqrt((c + a * y ** 2) / (a * (2 * b + 1))), y, c)
+            sqrt2 = [(-((c + a * y ** 2) / (a * (2 * b + 1)))**0.5, y, c)
                      for y, c in product([y_low, y_up], [c_low, c_up])]
             return [(x, y, c) for x, y, c in sqrt1 + sqrt2
                     if x_low <= x <= x_up]
@@ -628,9 +627,9 @@ class NpInterval(Numlike):
             # a*x**2=a(2*b+1)*y**2-c
             a = alpha
             b = beta
-            sqrt1 = [(x, math.sqrt((c + a * x ** 2) / (a * (2 * b + 1))), c)
+            sqrt1 = [(x, ((c + a * x ** 2) / (a * (2 * b + 1)))**0.5, c)
                      for x, c in product([x_low, x_up], [c_low, c_up])]
-            sqrt2 = [(x, -math.sqrt((c + a * x ** 2) / (a * (2 * b + 1))), c)
+            sqrt2 = [(x, -((c + a * x ** 2) / (a * (2 * b + 1)))**0.5, c)
                      for x, c in product([x_low, x_up], [c_low, c_up])]
             return [(x, y, c) for x, y, c in sqrt1 + sqrt2
                     if y_low <= y <= y_up]
@@ -638,9 +637,9 @@ class NpInterval(Numlike):
 
         def extremas_3d_dxdy(x_low, x_up, y_low, y_up, c_low, c_up):
             # ddf/dx/dy = 0 && ddf/dx/dx = 0
-            vals_cl = [sign * math.sqrt(c_low / (2 * alpha * beta))
+            vals_cl = [sign * (c_low / (2 * alpha * beta))**0.5
                        for sign in [-1, 1]]
-            vals_cu = [sign * math.sqrt(c_up / (2 * alpha * beta))
+            vals_cu = [sign * (c_up / (2 * alpha * beta))**0.5
                        for sign in [-1, 1]]
 
             pts_low = [(x, y, c_low) for x, y in product(vals_cl, vals_cl)]
