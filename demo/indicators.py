@@ -68,7 +68,7 @@ parser.add_argument("-l", "--log",
 parser.add_argument("-e", "--examples", type=int,
                     help="Choose on how many different percentages of weight "
                          "deleting will this algorithm be run"
-                         "(the higher the number, the more thorough the plot "
+                         "(the higher the number will be, the more thorough the plot "
                          "will be and the more time it will work)."
                          "Default is 4",
                     default=4)
