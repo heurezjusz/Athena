@@ -47,7 +47,7 @@ parser.add_argument("-n", "--network",
                     default="lenet")
 
 parser.add_argument("-t", "--types",
-                    help="Choose type of layers to run algorithm on: \n"
+                    help="Chooses type of layers to run algorithm on: \n"
                     " * default: default type of layers for indicators\n"
                     " * all: all layers\n"
                     " * conv: convolution layers\n"
@@ -66,10 +66,10 @@ parser.add_argument("-l", "--log",
                     action="store_true")
 
 parser.add_argument("-e", "--examples", type=int,
-                    help="Choose on how many different percentages of weight "
-                         "deleting will this algorithm be run"
-                         "(the higher the number will be, the more thorough the plot "
-                         "will be and the more time it will work)."
+                    help="Chooses how many different fractions of weights "
+                         "will be deleted (the higher the number,"
+                         "the more thorough the plot "
+                         "and the more time it takes)."
                          "Default is 4",
                     default=4)
 
