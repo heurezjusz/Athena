@@ -16,7 +16,9 @@ class DerestNetwork(object):
         :return Numlike: possible output for network
         """
         for layer in self.layers:
+            print "count activation", type(layer)
             inp = layer.count_activation(inp)
+            print "Done"
         return inp
 
     def count_derivatives(self, outp):
@@ -29,7 +31,9 @@ class DerestNetwork(object):
         """
         batches = outp.shape[0]
         for layer in reversed(self.layers):
+            print "count derivative", type(layer)
             outp = layer.count_derivatives(outp, batches)
+            print "Done"
         return outp
 
     def count_derest(self, count_function):

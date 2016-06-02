@@ -9,6 +9,14 @@ from athenet.algorithm.numlike import assert_numlike
 
 class DerestConvolutionalLayer(DerestLayer):
 
+
+    def __init__(self, layer, normalize_activation=lambda x: x,
+                 normalize_derivatives=lambda x: x):
+        super(DerestConvolutionalLayer, self).__init__(layer,
+                                                       normalize_activation,
+                                                       normalize_derivatives)
+        self.theano_ops = {}
+
     def _count_activation(self, layer_input):
         """
         Return estimated activations
@@ -36,7 +44,7 @@ class DerestConvolutionalLayer(DerestLayer):
         return d_conv(
             layer_output, input_shape,
             change_order(self.layer.filter_shape), self.layer.W,
-            self.layer.stride, self.layer.padding, self.layer.n_groups
+            self.layer.stride, self.layer.padding, self.layer.n_groups, self
         )
 
     def _get_activation_for_weight(self, activation, i0, i1, i2):
@@ -183,7 +191,7 @@ def a_conv(layer_input, image_shape, weights, filter_shape, biases,
 
 
 def d_conv(output, input_shape, filter_shape, weights,
-           stride=(1, 1), padding=(0, 0), n_groups=1):
+           stride=(1, 1), padding=(0, 0), n_groups=1, conv_layer=None):
     """Returns estimated impact of input of convolutional layer on output of
     network.
 
@@ -214,9 +222,12 @@ def d_conv(output, input_shape, filter_shape, weights,
                      into, two channels are connected only if they belong to
                      the same group.
     :type n_groups: integer
+    :param conv_layer: convolutional layer in which theano graph might
+                       be saved
+    :type conv_layer: DerestConvolutionalLayer
     :returns: Estimated impact of input on output of network
     :rtype: Numlike
     """
     res = output.op_d_conv(input_shape, filter_shape,
-                           weights, stride, padding, n_groups)
+                           weights, stride, padding, n_groups, conv_layer)
     return res

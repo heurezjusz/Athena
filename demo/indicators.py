@@ -116,6 +116,7 @@ results = run_algorithm(network, deleting_with_indicators,
 ok()
 
 if args.plot:
-    plot_2d_results(results, ylog=args.log,
+    # TODO: Make filename
+    plot_2d_results(results, 'dummy_filename_todo', ylog=args.log,
                     title="results of " + args.indicators + " indicators"
                     " deleted by " + args.deleting + " fraction")

@@ -208,7 +208,8 @@ class Interval(Numlike):
                                                   filter height,
                                                   filter width)
         :param image_shape: shape of input in the format
-                    (number of input channels, image height, image width)
+                    ([number of batches], ]number of input channels,
+                     image height, image width)
         :param filter_shape: filter shape in the format
                              (number of output channels, filter height,
                               filter width)
@@ -228,15 +229,24 @@ class Interval(Numlike):
         :type n_groups: integer
         :rtype: tuple of theno tensors
         """
-        image_shape = (image_shape[1], image_shape[2], image_shape[0])
+        if len(image_shape) == 4:
+            batch_size = image_shape[0]
+            image_shape = image_shape[2], image_shape[3], image_shape[1]
+            input_lower = lower
+            input_upper = upper
+        else:
+            batch_size = 1
+            image_shape = image_shape[1], image_shape[2], image_shape[0]
+            input_lower = lower.dimshuffle('x', 0, 1, 2)
+            input_upper = upper.dimshuffle('x', 0, 1, 2)
         filter_shape = (filter_shape[1], filter_shape[2], filter_shape[0])
-        args = (stride, n_groups, image_shape, padding, 1, filter_shape)
-        input_lower = lower.dimshuffle('x', 0, 1, 2)
-        input_upper = upper.dimshuffle('x', 0, 1, 2)
+        args = (stride, n_groups, image_shape, padding, batch_size,
+                filter_shape)
+
         input_lower_padded = misc_reshape_for_padding(input_lower, image_shape,
-                                                      1, padding)
+                                                      batch_size, padding)
         input_upper_padded = misc_reshape_for_padding(input_upper, image_shape,
-                                                      1, padding)
+                                                      batch_size, padding)
         weights_positive = T.maximum(weights, 0.)
         weights_negative = T.minimum(weights, 0.)
         conv_lower_positive = convolution(input_lower_padded, weights_positive,
@@ -250,10 +260,15 @@ class Interval(Numlike):
         conv_result_lower = conv_lower_positive + conv_upper_negative
         conv_result_upper = conv_lower_negative + conv_upper_positive
         _, n_in, h, w = conv_result_lower.shape
-        conv_result_lower_3d = conv_result_lower.reshape((n_in, h, w))
-        conv_result_upper_3d = conv_result_upper.reshape((n_in, h, w))
-        return (conv_result_lower_3d + biases.dimshuffle(0, 'x', 'x'),
-                conv_result_upper_3d + biases.dimshuffle(0, 'x', 'x'))
+        conv_result_lower_4d = conv_result_lower.reshape((batch_size, n_in, h,
+                                                          w))
+        conv_result_upper_4d = conv_result_upper.reshape((batch_size, n_in, h,
+                                                          w))
+        if biases is None:
+            return (conv_result_lower_4d, conv_result_upper_4d)
+        else:
+            return (conv_result_lower_4d + biases.dimshuffle(0, 'x', 'x'),
+                    conv_result_upper_4d + biases.dimshuffle(0, 'x', 'x'))
 
     def __str__(self):
         """Standard str method."""

@@ -2,7 +2,7 @@
 
 import matplotlib.pyplot as plt
 from athenet.utils import save_data_to_pickle, load_data_from_pickle
-
+from athenet.utils import RESULTS_DIR
 
 def merge_pickles(out_pkl, in_pkl1, in_pkl2):
     """ Merge pickled dictionaries.
@@ -20,7 +20,8 @@ def merge_pickles(out_pkl, in_pkl1, in_pkl2):
     save_data_to_pickle(pkl1, out_pkl)
 
 
-def plot_2d_results(results, xlabel='fraction of zero-filled weights',
+def plot_2d_results(results, filename,
+                    xlabel='fraction of zero-filled weights',
                     ylabel='error rate', xlog=False, ylog=False, title=None):
     """Create 2d plot of results given by sparsifying algorithm.
 
@@ -29,6 +30,9 @@ def plot_2d_results(results, xlabel='fraction of zero-filled weights',
     :param results: List of pairs to be plotted or dictionary with pairs as
                     values (for any key). Both elements from pair must be
                     recognized by matplotlib.pylot as numbers.
+    :param filename: Name of file where results will be saved. Files are saved
+                     in RESULTS_DIR directory. Png extension will be
+                     automatically added.
     :param xlabel: Label for x axis.
     :param ylabel: Label for y axis.
     :param xlog: If true, x axis is logarithmic.
@@ -48,4 +52,6 @@ def plot_2d_results(results, xlabel='fraction of zero-filled weights',
     plt.ylabel(ylabel)
     if title:
         plt.title(title)
-    plt.show()
+    os_filename = RESULTS_DIR + filename + '.png'
+    plt.savefig(os_filename)
+    #plt.show()

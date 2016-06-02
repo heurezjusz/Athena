@@ -439,7 +439,10 @@ class NpInterval(Interval):
         op_conv_function = function([t_lower, t_upper],
                                     [result_lower, result_upper])
 
-        lower, upper = op_conv_function(self.lower, self.upper)
+        lower, upper = op_conv_function(
+            self.lower,
+            self.upper
+        )
         return NpInterval(lower, upper)
 
     def op_d_relu(self, activation):
@@ -628,179 +631,10 @@ class NpInterval(Interval):
         :param float beta: local range normalization beta argument
         :rtype: NpInterval
         """
-        result = NpInterval.from_shape(input_shape, lower_val=0., upper_val=0.)
-        activation_sqares = activation.square()
-        local_range /= 2
-
-        # some piece of math, unnecessary in any other place:
-        # derivative for x placed in denominator of norm function
-        def der_eq(x, c):
-            """
-            Return derivative of norm function for value in denominator
-            :param x: value in denominator
-            :param c: k + sum of squares of other values
-
-            In this representation norm function equals to
-            x / (c + alpha * (x ** 2)) ** beta
-
-            :return: value of derivative of norm function
-            """
-            return (alpha * (1 - 2 * beta) * x ** 2 + c) / \
-                   (alpha * x ** 2 + c) ** (beta + 1)
-
-        # possible extremas
-        def extremas_2d_dx(c_low, c_up, x_low, x_up):
-            # df / dx = 0
-            # returns roots of derivative of derivetive of norm function
-            # x = 0
-            # intersects solution rectangle with x = 0
-
-            possibilities_c0 = [(0., c) for c in [c_low, c_up]]
-            possibilities_c1 = [
-                (-math.sqrt(3 * c) / math.sqrt(alpha * (2 * beta - 1)), c)
-                for c in [c_low, c_up]]
-            possibilities_c2 = [
-                (math.sqrt(3 * c) / math.sqrt(alpha * (2 * beta - 1)), c)
-                for c in [c_low, c_up]]
-
-            return [(x, c) for x, c in possibilities_c0 + possibilities_c1
-                    + possibilities_c2 if x_low <= x <= x_up]
-
-        def extremas_2d_dc(c_low, c_up, x_low, x_up):
-            # df / dc = 0
-            # returns roots of derivative of derivetive of norm function
-            # x = - sqrt(c) / sqrt (alpha * (2*beta+1))
-            # intersects solution rectangle with parabola above
-
-            possibilities_x = [(x, alpha * (2 * beta + 1) * x ** 2)
-                               for x in [x_low, x_up]]
-
-            return [(x, c) for x, c in possibilities_x
-                    if c_low <= c and c <= c_up]
-
-        # derivative for x not from denominator
-        def der_not_eq(x, y, c):
-            """
-            Returns value of derivative of norm function for element not
-            placed in derivative
-            :param x: element to compute derivative after
-            :param y: element placed in denominator
-            :param c: k + alpha * sum of squares of other elements
-
-            In this representation norm function equals to
-            y / (c + aplha * x**2 + alpha * y**2) ** beta
-
-            :return: Returns value of derivative of norm function
-            """
-            return -2 * alpha * beta * x * y / \
-                (c + alpha * (x ** 2 + y ** 2)) ** (beta + 1)
-
-        # possible extremas of this derivative
-        def extremas_3d(x_low, x_up, y_low, y_up, c_low, c_up):
-            return [(x, y, c) for x, y, c in
-                    product([x_low, x_up], [y_low, y_up], [c_low, c_up])
-                    if x_low <= x <= x_up and y_low <= y <= y_up]
-
-        def extremas_3d_dx(x_low, x_up, y_low, y_up, c_low, c_up):
-            # ddf/dx/dx = 0
-            # a*y**2=a(2*b+1)*x**2-c
-            a = alpha
-            b = beta
-            sqrt1 = [(math.sqrt((c + a * y ** 2) / (a * (2 * b + 1))), y, c)
-                     for y, c in product([y_low, y_up], [c_low, c_up])]
-            sqrt2 = [(-math.sqrt((c + a * y ** 2) / (a * (2 * b + 1))), y, c)
-                     for y, c in product([y_low, y_up], [c_low, c_up])]
-            return [(x, y, c) for x, y, c in sqrt1 + sqrt2
-                    if x_low <= x <= x_up]
-
-        def extremas_3d_dy(x_low, x_up, y_low, y_up, c_low, c_up):
-            # ddf/dx/dy = 0
-            # a*x**2=a(2*b+1)*y**2-c
-            a = alpha
-            b = beta
-            sqrt1 = [(x, math.sqrt((c + a * x ** 2) / (a * (2 * b + 1))), c)
-                     for x, c in product([x_low, x_up], [c_low, c_up])]
-            sqrt2 = [(x, -math.sqrt((c + a * x ** 2) / (a * (2 * b + 1))), c)
-                     for x, c in product([x_low, x_up], [c_low, c_up])]
-            return [(x, y, c) for x, y, c in sqrt1 + sqrt2
-                    if y_low <= y <= y_up]
-
-        def extremas_3d_dxdy(x_low, x_up, y_low, y_up, c_low, c_up):
-            # ddf/dx/dy = 0 && ddf/dx/dx = 0
-            vals_cl = [sign * math.sqrt(c_low / (2 * alpha * beta))
-                       for sign in [-1, 1]]
-            vals_cu = [sign * math.sqrt(c_up / (2 * alpha * beta))
-                       for sign in [-1, 1]]
-
-            pts_low = [(x, y, c_low) for x, y in product(vals_cl, vals_cl)]
-            pts_up = [(x, y, c_up) for x, y in product(vals_cu, vals_cu)]
-
-            return [(x, y, c) for x, y, c in pts_low + pts_up
-                    if x_low <= x <= x_up and y_low <= y <= y_up]
-
-        batches, channels, h, w = input_shape
-        for b, channel, at_h, at_w in product(xrange(batches),
-                                              xrange(channels), xrange(h),
-                                              xrange(w)):
-            C = NpInterval(np.asarray([k]), np.asarray([k]))
-            for i in xrange(-local_range, local_range + 1):
-                if channels > i + channel >= 0 != i:
-                    C += activation_sqares[b][channel + i][at_h][at_w] * alpha
-                    C._antiadd(activation_sqares[b][channel + i][at_h][at_w] * alpha)
-
-            Y = activation[b][channel][at_h][at_w]
-
-            # eq case
-            extremas = [(x, c) for x, c in product([Y.lower, Y.upper],
-                                                   [C.lower, C.upper])]
-
-            extremas.extend(extremas_2d_dx(C.lower, C.upper, Y.lower, Y.upper))
-            extremas.extend(extremas_2d_dc(C.lower, C.upper, Y.lower, Y.upper))
-
-            der_l = np.inf
-            der_u = -np.inf
-            for x, c in extremas:
-                val = der_eq(x, c)
-                if der_l > val:
-                    der_l = val
-                if der_u < val:
-                    der_u = val
-            result[b][channel][at_h][at_w] += \
-                NpInterval(der_l, der_u) * self[b][channel][at_h][at_w]
-
-            # not_eq_case
-            for i in xrange(-local_range, local_range + 1):
-                if i != 0 and 0 <= (i + channel) < channels:
-                    X = activation[b][channel + i][at_h][at_w]
-                    X2 = activation_sqares[b][channel + i][at_h][at_w] * alpha
-                    C = C._antiadd(X2)
-
-                    extremas =\
-                        extremas_3d(X.lower, X.upper, Y.lower, Y.upper,
-                                    C.lower, C.upper) + \
-                        extremas_3d_dx(X.lower, X.upper, Y.lower, Y.upper,
-                                       C.lower, C.upper) + \
-                        extremas_3d_dy(X.lower, X.upper, Y.lower, Y.upper,
-                                       C.lower, C.upper) + \
-                        extremas_3d_dxdy(X.lower, X.upper, Y.lower, Y.upper,
-                                         C.lower, C.upper)
-
-                    der_l = np.inf
-                    der_u = -np.inf
-                    for x, y, c in extremas:
-                        val = der_not_eq(x, y, c)
-                        if der_l > val:
-                            der_l = val
-                        if der_u < val:
-                            der_u = val
-                    result[b][channel + i][at_h][at_w] += \
-                        NpInterval(der_l, der_u) * self[b][channel][at_h][at_w]
-                    C += X2
-
-        return result
+        return self
 
     def op_d_conv(self, input_shape, filter_shape, weights,
-                  stride, padding, n_groups):
+                  stride, padding, n_groups, conv_layer=None):
         """Returns estimated impact of input of convolutional layer on output
         of network.
 
@@ -831,6 +665,9 @@ class NpInterval(Interval):
                          split into, two channels are connected only if they
                          belong to the same group.
         :type n_groups: integer
+        :param conv_layer: convolutional layer in which theano graph might
+                           be saved
+        :type conv_layer: DerestConvolutionalLayer
         :returns: Estimated impact of input on output of network
         :rtype: NpInterval
         """
@@ -851,8 +688,46 @@ class NpInterval(Interval):
         h += 2 * pad_h
         w += 2 * pad_w
         padded_input_shape = (n_batches, n_in, h, w)
-        result = NpInterval.from_shape(padded_input_shape, neutral=True)
+        if stride == (1, 1):
+            # arguments for theano convolution operation
+            op_stride = stride
+            op_n_batches, op_fh, op_fw = n_batches, fh, fw
+            op_n_in = n_out
+            op_n_out = n_in
+            op_h = h - fh + 1
+            op_w = w - fw + 1
+            op_pad_h = fh - 1
+            op_pad_w = fw - 1
+            op_padding = op_pad_h, op_pad_w
+            op_image_shape = op_n_batches, op_n_in, op_h, op_w
+            op_filter_shape = op_n_out, op_fh, op_fw
+            op_n_groups = n_groups
+            op_input = output
+            op_low = op_input.lower
+            op_upp = op_input.upper
+            op_weights = np.swapaxes(weights, 0, 1)
+            op_g_n_in = op_n_in / op_n_groups
+            op_weights = [op_weights[:, i * op_g_n_in:(i + 1) * op_g_n_in,
+                                     :, :] for i in xrange(op_n_groups)]
+            op_weights = np.concatenate(op_weights, axis=0)
+            conv_op_key = (op_image_shape, op_filter_shape, op_padding,
+                           op_n_groups)
+            if conv_op_key not in conv_layer.theano_ops:
+                t_lower, t_upper = T.tensor4(), T.tensor4()
+                result_lower, result_upper = self._theano_op_conv(
+                    t_lower, t_upper, op_weights, op_image_shape,
+                    op_filter_shape, None, op_stride, op_padding, op_n_groups
+                )
+                op_conv_function = function([t_lower, t_upper],
+                                            [result_lower, result_upper])
+                conv_layer.theano_ops[conv_op_key] = op_conv_function
+            conv_op = conv_layer.theano_ops[conv_op_key]
+            lower, upper = conv_op(op_low, op_upp)
+            result = NpInterval(lower, upper)
+            result = result[:, :, pad_h:(h - pad_h), pad_w:(w - pad_w)]
+            return result
 
+        result = NpInterval.from_shape(padded_input_shape, neutral=True)
         # see: flipping kernel
         # in theano.conv_2d flipped kernel is used
         weights = weights[:, :, ::-1, ::-1]

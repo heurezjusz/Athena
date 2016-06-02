@@ -72,6 +72,7 @@ def get_derest_indicators(network, input_=None, count_function=sum_length,
         max_batch_size = output_nr
     output= input_.derest_output(output_nr)
     for i in xrange(0, output_nr, max_batch_size):
+        print "BATCH:", i
         derest_network.count_derivatives(output[i:(i+max_batch_size)])
 
     results = derest_network.count_derest(count_function)

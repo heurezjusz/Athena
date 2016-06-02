@@ -384,7 +384,7 @@ class Numlike(object):
         raise NotImplementedError
 
     def op_d_conv(self, input_shape, filter_shape, weights,
-                  stride, padding, n_groups):
+                  stride, padding, n_groups, conv_layer=None):
         """Returns estimated impact of input of convolutional layer on output
         of network.
 
@@ -415,6 +415,9 @@ class Numlike(object):
                          split into, two channels are connected only if they
                          belong to the same group.
         :type n_groups: integer
+        :param conv_layer: convolutional layer in which theano graph might
+                           be saved
+        :type conv_layer: DerestConvolutionalLayer
         :returns: Estimated impact of input on output of network
         :rtype: Numlike
         """
